@@ -8,24 +8,30 @@
 
 ---
 
-## 🎯 Approved Strategy: OPTION 2 (Aggressive-Safe)
+## 🎯 Implemented Strategy: Multi-Page Discovery (Optimized for Free Tier)
 
 ### Configuration Summary
 - **Scan Frequency**: Every 60 seconds
-- **Pages per Scan**: 25 pages
-- **API Calls per Scan**: 25 calls to GeckoTerminal
-- **API Utilization**: 83% (25 of 30 calls/minute)
-- **Buffer**: 5 calls for retries/errors
+- **Pages per Scan**: 10 pages (GeckoTerminal free tier limit)
+- **API Calls per Scan**: 10 calls to GeckoTerminal
+- **API Utilization**: 33% (10 of 30 calls/minute)
+- **Buffer**: 20 calls for retries/errors (safe)
 - **Flashloan Size**: $50 USD
 - **Minimum Net Profit**: $1.00 USD
 - **Arbitrage Hops**: 2 hops (standard), 4 hops if highly profitable (>$5)
 
 ### Expected Results per Scan
-- **Pools Fetched**: 500-750
-- **Unique Tokens**: 120-180
-- **Opportunities Detected**: 50-120
-- **Profitable (>$1 net)**: 12-30
+- **Pools Fetched**: 200-300
+- **Unique Tokens**: 60-100
+- **Opportunities Detected**: 20-50
+- **Profitable (>$1 net)**: 5-15
 - **Scans per Hour**: 60
+
+### IMPORTANT: GeckoTerminal Free Tier Limitation
+- **Page Limit**: 10 pages maximum (pages 11+ return 401 Unauthorized)
+- **Original Plan**: 25 pages (83% utilization)
+- **Actual Implementation**: 10 pages (33% utilization)
+- **Impact**: Still 10x more pools than before (200-300 vs 19)
 
 ---
 
