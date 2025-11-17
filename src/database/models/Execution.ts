@@ -2,7 +2,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import sqlite from '../sqlite';
-import { Logger } from '../../utils/Logger';
+import { logger } from '../../services/utils/Logger';
 
 /**
  * Execution Model with CRUD operations
@@ -23,8 +23,7 @@ export interface ExecutionData {
 }
 
 export class Execution {
-  private static readonly logger = Logger.getInstance();
-  private static readonly TABLE = 'executions';
+private static readonly TABLE = 'executions';
 
   /**
    * Create a new execution record
@@ -57,7 +56,7 @@ export class Execution {
         now
       );
 
-      this.logger.info(`Created execution ${id} for opportunity ${data.opportunity_id}`);
+      logger.info(`Created execution ${id} for opportunity ${data.opportunity_id}`);
 
       return {
         id,
@@ -72,7 +71,7 @@ export class Execution {
         error_message: data.error_message || null,
       };
     } catch (error) {
-      this.logger.error(`Failed to create execution: ${error}`);
+      logger.error(`Failed to create execution: ${error}`);
       throw new Error(`Execution creation failed: ${error}`);
     }
   }
@@ -89,7 +88,7 @@ export class Execution {
       const row = stmt.get(id) as ExecutionData | undefined;
       return row || null;
     } catch (error) {
-      this.logger.error(`Failed to find execution ${id}: ${error}`);
+      logger.error(`Failed to find execution ${id}: ${error}`);
       throw new Error(`Execution lookup failed: ${error}`);
     }
   }
@@ -108,7 +107,7 @@ export class Execution {
       const rows = stmt.all(opportunityId) as ExecutionData[];
       return rows;
     } catch (error) {
-      this.logger.error(`Failed to find executions by opportunity: ${error}`);
+      logger.error(`Failed to find executions by opportunity: ${error}`);
       throw new Error(`Opportunity executions lookup failed: ${error}`);
     }
   }
@@ -125,7 +124,7 @@ export class Execution {
       const row = stmt.get(txHash) as ExecutionData | undefined;
       return row || null;
     } catch (error) {
-      this.logger.error(`Failed to find execution by tx hash: ${error}`);
+      logger.error(`Failed to find execution by tx hash: ${error}`);
       throw new Error(`TX hash lookup failed: ${error}`);
     }
   }
@@ -145,7 +144,7 @@ export class Execution {
       const rows = stmt.all(limit) as ExecutionData[];
       return rows;
     } catch (error) {
-      this.logger.error(`Failed to find pending executions: ${error}`);
+      logger.error(`Failed to find pending executions: ${error}`);
       throw new Error(`Pending executions lookup failed: ${error}`);
     }
   }
@@ -169,7 +168,7 @@ export class Execution {
       const rows = stmt.all(chainId, status, limit) as ExecutionData[];
       return rows;
     } catch (error) {
-      this.logger.error(`Failed to find executions by chain/status: ${error}`);
+      logger.error(`Failed to find executions by chain/status: ${error}`);
       throw new Error(`Chain/status lookup failed: ${error}`);
     }
   }
@@ -197,10 +196,10 @@ export class Execution {
         throw new Error(`Execution ${id} not found after update`);
       }
 
-      this.logger.info(`Updated execution ${id} status to ${status}`);
+      logger.info(`Updated execution ${id} status to ${status}`);
       return updated;
     } catch (error) {
-      this.logger.error(`Failed to update execution status: ${error}`);
+      logger.error(`Failed to update execution status: ${error}`);
       throw new Error(`Status update failed: ${error}`);
     }
   }
@@ -222,9 +221,9 @@ export class Execution {
       `);
 
       stmt.run(gasUsed, gasPrice, actualProfitUsd, Date.now(), id);
-      this.logger.info(`Updated execution ${id} gas and profit info`);
+      logger.info(`Updated execution ${id} gas and profit info`);
     } catch (error) {
-      this.logger.error(`Failed to update gas and profit: ${error}`);
+      logger.error(`Failed to update gas and profit: ${error}`);
       throw new Error(`Gas/profit update failed: ${error}`);
     }
   }
@@ -241,9 +240,9 @@ export class Execution {
       `);
 
       stmt.run(errorMessage, Date.now(), id);
-      this.logger.warn(`Marked execution ${id} as failed: ${errorMessage}`);
+      logger.warn(`Marked execution ${id} as failed: ${errorMessage}`);
     } catch (error) {
-      this.logger.error(`Failed to update error message: ${error}`);
+      logger.error(`Failed to update error message: ${error}`);
       throw new Error(`Error update failed: ${error}`);
     }
   }
@@ -258,12 +257,12 @@ export class Execution {
       const deleted = (result.changes || 0) > 0;
 
       if (deleted) {
-        this.logger.info(`Deleted execution ${id}`);
+        logger.info(`Deleted execution ${id}`);
       }
 
       return deleted;
     } catch (error) {
-      this.logger.error(`Failed to delete execution: ${error}`);
+      logger.error(`Failed to delete execution: ${error}`);
       throw new Error(`Execution deletion failed: ${error}`);
     }
   }
@@ -302,7 +301,7 @@ export class Execution {
         avgProfit: row.avg_profit || 0,
       };
     } catch (error) {
-      this.logger.error(`Failed to get statistics: ${error}`);
+      logger.error(`Failed to get statistics: ${error}`);
       throw new Error(`Statistics retrieval failed: ${error}`);
     }
   }
@@ -328,7 +327,7 @@ export class Execution {
 
       return profitMap;
     } catch (error) {
-      this.logger.error(`Failed to get profit by chain: ${error}`);
+      logger.error(`Failed to get profit by chain: ${error}`);
       throw new Error(`Profit by chain retrieval failed: ${error}`);
     }
   }

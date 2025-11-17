@@ -1,7 +1,7 @@
 'use strict';
 
 import { v4 as uuidv4 } from 'uuid';
-import { Logger } from '../../utils/Logger';
+import { logger } from '../../services/utils/Logger';
 import { Opportunity, OpportunityData } from '../../database/models/Opportunity';
 import { Pool } from '../../database/models/Pool';
 
@@ -29,8 +29,7 @@ export interface DetectedOpportunity {
 }
 
 export class OpportunityDetector {
-  private static readonly logger = Logger.getInstance();
-  private readonly chainId: number;
+private readonly chainId: number;
   private readonly minProfitUsd: number;
   private readonly minProfitPercentage: number;
   private readonly opportunityTtlMs: number;
@@ -108,13 +107,13 @@ export class OpportunityDetector {
           opp.profitPercentage >= this.minProfitPercentage
       );
 
-      this.logger.info(
+      logger.info(
         `Found ${profitable.length} profitable opportunities out of ${opportunities.length}`
       );
 
       return profitable.sort((a, b) => b.profitUsd - a.profitUsd);
     } catch (error) {
-      this.logger.error(`Failed to scan opportunities: ${error}`);
+      logger.error(`Failed to scan opportunities: ${error}`);
       throw new Error(`Opportunity scanning failed: ${error}`);
     }
   }
@@ -178,7 +177,7 @@ export class OpportunityDetector {
         confidence: Math.min(1, Math.abs(profitRatio) / 0.1),
       };
     } catch (error) {
-      this.logger.debug(`Direct arbitrage check failed: ${error}`);
+      logger.debug(`Direct arbitrage check failed: ${error}`);
       return null;
     }
   }
@@ -261,7 +260,7 @@ export class OpportunityDetector {
         confidence: Math.min(1, profitRatio / 0.05),
       };
     } catch (error) {
-      this.logger.debug(`Triangular arbitrage check failed: ${error}`);
+      logger.debug(`Triangular arbitrage check failed: ${error}`);
       return null;
     }
   }
@@ -288,7 +287,7 @@ export class OpportunityDetector {
 
       return opportunity;
     } catch (error) {
-      this.logger.error(`Failed to save opportunity: ${error}`);
+      logger.error(`Failed to save opportunity: ${error}`);
       throw new Error(`Opportunity save failed: ${error}`);
     }
   }
@@ -302,7 +301,7 @@ export class OpportunityDetector {
       const output = input * price;
       return output.toString();
     } catch (error) {
-      this.logger.error(`Failed to calculate output: ${error}`);
+      logger.error(`Failed to calculate output: ${error}`);
       return '0';
     }
   }

@@ -197,7 +197,9 @@ export class PoolSubscriber extends EventEmitter {
     // Limit cache size
     if (this.eventCache.size > this.cacheSize) {
       const firstItem = this.eventCache.values().next().value;
-      this.eventCache.delete(firstItem);
+      if (firstItem) {
+        this.eventCache.delete(firstItem);
+      }
     }
   }
 

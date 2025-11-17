@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { Logger } from '../../utils/logger';
+import { logger } from '../../services/utils/Logger';
 
 export interface ArbitrageOpportunity {
   id: string;
@@ -16,12 +16,11 @@ export interface ArbitrageOpportunity {
 }
 
 class OpportunitiesController {
-  private logger: Logger;
+  // logger imported from utils
   private opportunities: ArbitrageOpportunity[] = [];
 
   constructor() {
-    this.logger = new Logger('OpportunitiesController');
-  }
+}
 
   /**
    * GET /api/opportunities
@@ -29,7 +28,7 @@ class OpportunitiesController {
    */
   async getOpportunities(req: Request, res: Response): Promise<void> {
     try {
-      this.logger.info('Fetching arbitrage opportunities');
+      logger.info('Fetching arbitrage opportunities');
 
       // Optional query parameters for filtering
       const minProfit = req.query.minProfit ? parseFloat(req.query.minProfit as string) : 0;
@@ -58,7 +57,7 @@ class OpportunitiesController {
       res.status(200).json(response);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to get opportunities: ${errorMessage}`);
+      logger.error(`Failed to get opportunities: ${errorMessage}`);
       res.status(500).json({
         success: false,
         error: errorMessage,
@@ -71,7 +70,7 @@ class OpportunitiesController {
    */
   addOpportunity(opportunity: ArbitrageOpportunity): void {
     this.opportunities.push(opportunity);
-    this.logger.debug(`Added opportunity: ${opportunity.id}`);
+    logger.debug(`Added opportunity: ${opportunity.id}`);
   }
 
   /**
@@ -79,7 +78,7 @@ class OpportunitiesController {
    */
   clearOpportunities(): void {
     this.opportunities = [];
-    this.logger.debug('Cleared all opportunities');
+    logger.debug('Cleared all opportunities');
   }
 
   /**

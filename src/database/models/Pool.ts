@@ -2,7 +2,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import sqlite from '../sqlite';
-import { Logger } from '../../utils/Logger';
+import { logger } from '../../services/utils/Logger';
 
 /**
  * Pool Model with CRUD operations
@@ -22,8 +22,7 @@ export interface PoolData {
 }
 
 export class Pool {
-  private static readonly logger = Logger.getInstance();
-  private static readonly TABLE = 'pools';
+private static readonly TABLE = 'pools';
 
   /**
    * Create or update pool record (upsert)
@@ -53,7 +52,7 @@ export class Pool {
           id
         );
 
-        this.logger.debug(`Updated pool ${id}`);
+        logger.debug(`Updated pool ${id}`);
       } else {
         // Create new pool
         const stmt = sqlite.prepare(`
@@ -75,7 +74,7 @@ export class Pool {
           now
         );
 
-        this.logger.info(`Created pool ${id}`);
+        logger.info(`Created pool ${id}`);
       }
 
       return {
@@ -84,7 +83,7 @@ export class Pool {
         last_updated: now,
       };
     } catch (error) {
-      this.logger.error(`Failed to upsert pool: ${error}`);
+      logger.error(`Failed to upsert pool: ${error}`);
       throw new Error(`Pool upsert failed: ${error}`);
     }
   }
@@ -101,7 +100,7 @@ export class Pool {
       const row = stmt.get(id) as PoolData | undefined;
       return row || null;
     } catch (error) {
-      this.logger.error(`Failed to find pool ${id}: ${error}`);
+      logger.error(`Failed to find pool ${id}: ${error}`);
       throw new Error(`Pool lookup failed: ${error}`);
     }
   }
@@ -119,7 +118,7 @@ export class Pool {
       const id = this.generatePoolId(chainId, token0, token1, fee);
       return this.findById(id);
     } catch (error) {
-      this.logger.error(`Failed to find pool by tokens: ${error}`);
+      logger.error(`Failed to find pool by tokens: ${error}`);
       throw new Error(`Token pool lookup failed: ${error}`);
     }
   }
@@ -139,7 +138,7 @@ export class Pool {
       const rows = stmt.all(chainId, limit) as PoolData[];
       return rows;
     } catch (error) {
-      this.logger.error(`Failed to find pools by chain: ${error}`);
+      logger.error(`Failed to find pools by chain: ${error}`);
       throw new Error(`Chain pools lookup failed: ${error}`);
     }
   }
@@ -163,7 +162,7 @@ export class Pool {
       const rows = stmt.all(chainId, tokenAddress, tokenAddress, limit) as PoolData[];
       return rows;
     } catch (error) {
-      this.logger.error(`Failed to find pools by token: ${error}`);
+      logger.error(`Failed to find pools by token: ${error}`);
       throw new Error(`Token pools lookup failed: ${error}`);
     }
   }
@@ -189,7 +188,7 @@ export class Pool {
       const rows = stmt.all(chainId, token0, token1, token1, token0) as PoolData[];
       return rows;
     } catch (error) {
-      this.logger.error(`Failed to find pools between tokens: ${error}`);
+      logger.error(`Failed to find pools between tokens: ${error}`);
       throw new Error(`Token pair pools lookup failed: ${error}`);
     }
   }
@@ -209,7 +208,7 @@ export class Pool {
       const rows = stmt.all(chainId, Date.now() - maxAgeMs) as PoolData[];
       return rows;
     } catch (error) {
-      this.logger.error(`Failed to find stale pools: ${error}`);
+      logger.error(`Failed to find stale pools: ${error}`);
       throw new Error(`Stale pools lookup failed: ${error}`);
     }
   }
@@ -231,9 +230,9 @@ export class Pool {
       `);
 
       stmt.run(reserve0, reserve1, price, Date.now(), id);
-      this.logger.debug(`Updated reserves for pool ${id}`);
+      logger.debug(`Updated reserves for pool ${id}`);
     } catch (error) {
-      this.logger.error(`Failed to update reserves: ${error}`);
+      logger.error(`Failed to update reserves: ${error}`);
       throw new Error(`Reserve update failed: ${error}`);
     }
   }
@@ -251,7 +250,7 @@ export class Pool {
 
       stmt.run(liquidity, Date.now(), id);
     } catch (error) {
-      this.logger.error(`Failed to update liquidity: ${error}`);
+      logger.error(`Failed to update liquidity: ${error}`);
       throw new Error(`Liquidity update failed: ${error}`);
     }
   }
@@ -266,12 +265,12 @@ export class Pool {
       const deleted = (result.changes || 0) > 0;
 
       if (deleted) {
-        this.logger.info(`Deleted pool ${id}`);
+        logger.info(`Deleted pool ${id}`);
       }
 
       return deleted;
     } catch (error) {
-      this.logger.error(`Failed to delete pool: ${error}`);
+      logger.error(`Failed to delete pool: ${error}`);
       throw new Error(`Pool deletion failed: ${error}`);
     }
   }
@@ -309,7 +308,7 @@ export class Pool {
         avgPrice: row.avg_price || 0,
       };
     } catch (error) {
-      this.logger.error(`Failed to get statistics: ${error}`);
+      logger.error(`Failed to get statistics: ${error}`);
       throw new Error(`Statistics retrieval failed: ${error}`);
     }
   }
@@ -328,12 +327,12 @@ export class Pool {
       const deleted = result.changes || 0;
 
       if (deleted > 0) {
-        this.logger.info(`Cleaned up ${deleted} old pool records`);
+        logger.info(`Cleaned up ${deleted} old pool records`);
       }
 
       return deleted;
     } catch (error) {
-      this.logger.error(`Failed to cleanup pools: ${error}`);
+      logger.error(`Failed to cleanup pools: ${error}`);
       throw new Error(`Pool cleanup failed: ${error}`);
     }
   }

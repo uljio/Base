@@ -144,11 +144,11 @@ export class GeckoTerminal {
     try {
       await this.rateLimiter.acquire();
 
-      const response = await this.client.get<{ data: GeckoPool }>(
+      const response = await this.client.get<GeckoResponse>(
         `/networks/base/pools/${poolAddress}`
       );
 
-      const pools = this.parsePools({ data: [response.data] });
+      const pools = this.parsePools(response.data);
       return pools[0] || null;
     } catch (error) {
       logger.warn('Failed to get pool details', {

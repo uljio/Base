@@ -4,7 +4,7 @@ import { FlashLoanExecutor, FlashLoanParams } from './services/arbitrage/FlashLo
 import { statusController } from './api/routes/status';
 import { opportunitiesController } from './api/routes/opportunities';
 import { configController } from './api/routes/config';
-import { Logger } from './utils/logger';
+import { logger } from './services/utils/Logger';
 
 export interface BotOptions {
   rpcUrl: string;
@@ -17,7 +17,7 @@ export interface BotOptions {
 }
 
 export class ArbitrageBot {
-  private logger: Logger;
+  // logger imported from utils
   private provider: ethers.JsonRpcProvider;
   private wallet: ethers.Wallet;
   private contract: ethers.Contract;
@@ -29,8 +29,7 @@ export class ArbitrageBot {
   private options: BotOptions;
 
   constructor(options: BotOptions) {
-    this.logger = new Logger('ArbitrageBot');
-    this.options = options;
+this.options = options;
 
     // Initialize provider
     this.provider = new ethers.JsonRpcProvider(options.rpcUrl);
@@ -59,7 +58,7 @@ export class ArbitrageBot {
     };
     this.apiServer = new APIServer(serverConfig);
 
-    this.logger.info('ArbitrageBot initialized');
+    logger.info('ArbitrageBot initialized');
   }
 
   /**
@@ -68,11 +67,11 @@ export class ArbitrageBot {
   async start(): Promise<void> {
     try {
       if (this.isRunning) {
-        this.logger.warn('Bot is already running');
+        logger.warn('Bot is already running');
         return;
       }
 
-      this.logger.info('Starting ArbitrageBot...');
+      logger.info('Starting ArbitrageBot...');
       this.startTime = Date.now();
       this.isRunning = true;
 
@@ -89,10 +88,10 @@ export class ArbitrageBot {
       // Setup graceful shutdown handlers
       this.setupShutdownHandlers();
 
-      this.logger.info('ArbitrageBot started successfully');
+      logger.info('ArbitrageBot started successfully');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to start bot: ${errorMessage}`);
+      logger.error(`Failed to start bot: ${errorMessage}`);
       this.isRunning = false;
       throw error;
     }
@@ -103,7 +102,7 @@ export class ArbitrageBot {
    */
   async stop(): Promise<void> {
     try {
-      this.logger.info('Stopping ArbitrageBot...');
+      logger.info('Stopping ArbitrageBot...');
 
       if (this.checkInterval) {
         clearInterval(this.checkInterval);
@@ -115,10 +114,10 @@ export class ArbitrageBot {
 
       await this.apiServer.stop();
 
-      this.logger.info('ArbitrageBot stopped');
+      logger.info('ArbitrageBot stopped');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Error stopping bot: ${errorMessage}`);
+      logger.error(`Error stopping bot: ${errorMessage}`);
     }
   }
 
@@ -136,7 +135,7 @@ export class ArbitrageBot {
       await this.checkOpportunities();
     }, config.checkIntervalMs);
 
-    this.logger.info(`Opportunity checker started (interval: ${config.checkIntervalMs}ms)`);
+    logger.info(`Opportunity checker started (interval: ${config.checkIntervalMs}ms)`);
   }
 
   /**
@@ -161,10 +160,10 @@ export class ArbitrageBot {
       // 3. Finding profitable arbitrage opportunities
       // 4. Storing them in opportunitiesController
 
-      this.logger.debug('Opportunity check cycle completed');
+      logger.debug('Opportunity check cycle completed');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Error during opportunity check: ${errorMessage}`);
+      logger.error(`Error during opportunity check: ${errorMessage}`);
       statusController.incrementFailedTrades(errorMessage);
     }
   }
@@ -177,24 +176,24 @@ export class ArbitrageBot {
       const config = configController.getConfiguration();
 
       if (!config.enabled) {
-        this.logger.warn('Bot is not enabled, skipping execution');
+        logger.warn('Bot is not enabled, skipping execution');
         return;
       }
 
-      this.logger.info(`Executing arbitrage with params: ${JSON.stringify(params)}`);
+      logger.info(`Executing arbitrage with params: ${JSON.stringify(params)}`);
 
       const result = await this.executor.executeFlashLoan(params);
 
       if (result.success) {
         statusController.incrementSuccessfulTrades(result.profit);
-        this.logger.info(`Arbitrage executed successfully: ${result.txHash}`);
+        logger.info(`Arbitrage executed successfully: ${result.txHash}`);
       } else {
         statusController.incrementFailedTrades(result.error);
-        this.logger.error(`Arbitrage execution failed: ${result.error}`);
+        logger.error(`Arbitrage execution failed: ${result.error}`);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Error executing arbitrage: ${errorMessage}`);
+      logger.error(`Error executing arbitrage: ${errorMessage}`);
       statusController.incrementFailedTrades(errorMessage);
     }
   }
@@ -204,7 +203,7 @@ export class ArbitrageBot {
    */
   private setupShutdownHandlers(): void {
     const shutdownHandler = async (signal: string) => {
-      this.logger.info(`Received ${signal}, shutting down gracefully...`);
+      logger.info(`Received ${signal}, shutting down gracefully...`);
       await this.stop();
       process.exit(0);
     };
@@ -214,13 +213,13 @@ export class ArbitrageBot {
 
     // Handle uncaught exceptions
     process.on('uncaughtException', (error) => {
-      this.logger.error(`Uncaught exception: ${error.message}`);
+      logger.error(`Uncaught exception: ${error.message}`);
       this.stop().then(() => process.exit(1));
     });
 
     // Handle unhandled promise rejections
     process.on('unhandledRejection', (reason) => {
-      this.logger.error(`Unhandled rejection: ${reason}`);
+      logger.error(`Unhandled rejection: ${reason}`);
       this.stop().then(() => process.exit(1));
     });
   }

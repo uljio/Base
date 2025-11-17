@@ -2,7 +2,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import sqlite from '../sqlite';
-import { Logger } from '../../utils/Logger';
+import { logger } from '../../services/utils/Logger';
 
 /**
  * Opportunity Model with CRUD operations
@@ -26,8 +26,7 @@ export interface OpportunityData {
 }
 
 export class Opportunity {
-  private static readonly logger = Logger.getInstance();
-  private static readonly TABLE = 'opportunities';
+private static readonly TABLE = 'opportunities';
 
   /**
    * Create a new opportunity record
@@ -61,7 +60,7 @@ export class Opportunity {
         now
       );
 
-      this.logger.info(`Created opportunity ${id} with profit ${data.profit_usd} USD`);
+      logger.info(`Created opportunity ${id} with profit ${data.profit_usd} USD`);
 
       return {
         id,
@@ -72,7 +71,7 @@ export class Opportunity {
         executed_at: null,
       };
     } catch (error) {
-      this.logger.error(`Failed to create opportunity: ${error}`);
+      logger.error(`Failed to create opportunity: ${error}`);
       throw new Error(`Opportunity creation failed: ${error}`);
     }
   }
@@ -89,7 +88,7 @@ export class Opportunity {
       const row = stmt.get(id) as OpportunityData | undefined;
       return row || null;
     } catch (error) {
-      this.logger.error(`Failed to find opportunity ${id}: ${error}`);
+      logger.error(`Failed to find opportunity ${id}: ${error}`);
       throw new Error(`Opportunity lookup failed: ${error}`);
     }
   }
@@ -109,7 +108,7 @@ export class Opportunity {
       const rows = stmt.all(Date.now(), limit) as OpportunityData[];
       return rows;
     } catch (error) {
-      this.logger.error(`Failed to find pending opportunities: ${error}`);
+      logger.error(`Failed to find pending opportunities: ${error}`);
       throw new Error(`Pending opportunities lookup failed: ${error}`);
     }
   }
@@ -133,7 +132,7 @@ export class Opportunity {
       const rows = stmt.all(chainId, status, limit) as OpportunityData[];
       return rows;
     } catch (error) {
-      this.logger.error(`Failed to find opportunities by chain/status: ${error}`);
+      logger.error(`Failed to find opportunities by chain/status: ${error}`);
       throw new Error(`Chain/status lookup failed: ${error}`);
     }
   }
@@ -161,10 +160,10 @@ export class Opportunity {
         throw new Error(`Opportunity ${id} not found after update`);
       }
 
-      this.logger.info(`Updated opportunity ${id} status to ${status}`);
+      logger.info(`Updated opportunity ${id} status to ${status}`);
       return updated;
     } catch (error) {
-      this.logger.error(`Failed to update opportunity status: ${error}`);
+      logger.error(`Failed to update opportunity status: ${error}`);
       throw new Error(`Status update failed: ${error}`);
     }
   }
@@ -185,9 +184,9 @@ export class Opportunity {
       `);
 
       stmt.run(profitUsd, profitPercentage, Date.now(), id);
-      this.logger.info(`Updated opportunity ${id} profit to ${profitUsd} USD`);
+      logger.info(`Updated opportunity ${id} profit to ${profitUsd} USD`);
     } catch (error) {
-      this.logger.error(`Failed to update profit: ${error}`);
+      logger.error(`Failed to update profit: ${error}`);
       throw new Error(`Profit update failed: ${error}`);
     }
   }
@@ -202,12 +201,12 @@ export class Opportunity {
       const deleted = (result.changes || 0) > 0;
 
       if (deleted) {
-        this.logger.info(`Deleted opportunity ${id}`);
+        logger.info(`Deleted opportunity ${id}`);
       }
 
       return deleted;
     } catch (error) {
-      this.logger.error(`Failed to delete opportunity: ${error}`);
+      logger.error(`Failed to delete opportunity: ${error}`);
       throw new Error(`Opportunity deletion failed: ${error}`);
     }
   }
@@ -243,7 +242,7 @@ export class Opportunity {
         avgProfit: row.avg_profit || 0,
       };
     } catch (error) {
-      this.logger.error(`Failed to get statistics: ${error}`);
+      logger.error(`Failed to get statistics: ${error}`);
       throw new Error(`Statistics retrieval failed: ${error}`);
     }
   }
@@ -262,12 +261,12 @@ export class Opportunity {
       const deleted = result.changes || 0;
 
       if (deleted > 0) {
-        this.logger.info(`Cleaned up ${deleted} expired opportunities`);
+        logger.info(`Cleaned up ${deleted} expired opportunities`);
       }
 
       return deleted;
     } catch (error) {
-      this.logger.error(`Failed to cleanup expired opportunities: ${error}`);
+      logger.error(`Failed to cleanup expired opportunities: ${error}`);
       throw new Error(`Cleanup failed: ${error}`);
     }
   }

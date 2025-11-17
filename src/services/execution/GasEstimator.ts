@@ -1,7 +1,7 @@
 'use strict';
 
-import { Logger } from '../../utils/Logger';
-import { BigNumber, ethers } from 'ethers';
+import { logger } from '../../services/utils/Logger';
+import { Provider } from 'ethers';
 
 /**
  * Gas Estimator Service
@@ -25,8 +25,7 @@ export interface NetworkGasPrices {
 }
 
 export class GasEstimator {
-  private static readonly logger = Logger.getInstance();
-  private readonly provider: ethers.providers.Provider | null;
+private readonly provider: Provider | null;
   private readonly chainId: number;
   private gasTokenPrice: number = 1; // ETH price in USD
 
@@ -46,7 +45,7 @@ export class GasEstimator {
 
   constructor(
     chainId: number,
-    provider?: ethers.providers.Provider,
+    provider?: Provider,
     gasTokenPrice: number = 1
   ) {
     this.chainId = chainId;
@@ -72,7 +71,7 @@ export class GasEstimator {
         gasPrices.priorityFeePerGas
       );
     } catch (error) {
-      this.logger.error(`Failed to estimate swap gas: ${error}`);
+      logger.error(`Failed to estimate swap gas: ${error}`);
       // Return conservative estimate
       return this.buildGasEstimate(
         this.GAS_CONSTANTS.UNISWAP_V2_SWAP.toString(),
@@ -104,7 +103,7 @@ export class GasEstimator {
         gasPrices.priorityFeePerGas
       );
     } catch (error) {
-      this.logger.error(`Failed to estimate multi-hop gas: ${error}`);
+      logger.error(`Failed to estimate multi-hop gas: ${error}`);
       return this.buildGasEstimate(
         this.GAS_CONSTANTS.MULTI_HOP_SWAP.toString(),
         '30000000000',
@@ -126,7 +125,7 @@ export class GasEstimator {
         gasPrices.priorityFeePerGas
       );
     } catch (error) {
-      this.logger.error(`Failed to estimate flash swap gas: ${error}`);
+      logger.error(`Failed to estimate flash swap gas: ${error}`);
       return this.buildGasEstimate(
         this.GAS_CONSTANTS.FLASH_SWAP.toString(),
         '30000000000',
@@ -154,17 +153,14 @@ export class GasEstimator {
       const feeData = await this.provider.getFeeData();
 
       return {
-        baseFeePerGas: feeData.lastBaseFeePerGas?.toString() || '30000000000',
+        baseFeePerGas: feeData.maxFeePerGas?.toString() || '30000000000', // ethers v6: use maxFeePerGas
         priorityFeePerGas: feeData.maxPriorityFeePerGas?.toString() || '2000000000',
         gasPrice: feeData.gasPrice?.toString() || '32000000000',
         standardGasPrice: feeData.gasPrice?.toString() || '30000000000',
-        fastGasPrice: BigNumber.from(feeData.gasPrice || '32000000000')
-          .mul(13)
-          .div(10)
-          .toString(),
+        fastGasPrice: ((BigInt(feeData.gasPrice || '32000000000') * 13n) / 10n).toString(),
       };
     } catch (error) {
-      this.logger.warn(`Failed to get gas prices: ${error}`);
+      logger.warn(`Failed to get gas prices: ${error}`);
       // Return reasonable defaults
       return {
         baseFeePerGas: '30000000000',
@@ -189,14 +185,14 @@ export class GasEstimator {
       const estimate = await this.provider.estimateGas({
         to,
         data,
-        value: BigNumber.from(value),
+        value: BigInt(value),
       });
 
       // Add 20% buffer to avoid out-of-gas errors
-      const withBuffer = estimate.mul(120).div(100);
+      const withBuffer = (estimate * 120n) / 100n;
       return withBuffer.toString();
     } catch (error) {
-      this.logger.warn(`Failed to estimate gas limit: ${error}`);
+      logger.warn(`Failed to estimate gas limit: ${error}`);
       // Return conservative estimate
       return this.GAS_CONSTANTS.SWAP.toString();
     }
@@ -211,27 +207,27 @@ export class GasEstimator {
     priorityFeePerGas: string
   ): GasEstimate {
     try {
-      const gasUsedBN = BigNumber.from(gasUsed);
-      const baseBN = BigNumber.from(baseFeePerGas);
-      const priorityBN = BigNumber.from(priorityFeePerGas);
+      const gasUsedBN = BigInt(gasUsed);
+      const baseBN = BigInt(baseFeePerGas);
+      const priorityBN = BigInt(priorityFeePerGas);
 
       // maxFeePerGas = baseFee + priorityFee
-      const maxFeePerGas = baseBN.add(priorityBN);
+      const maxFeePerGas = baseBN + priorityBN;
 
       // Estimated cost
-      const estimatedCost = gasUsedBN.mul(maxFeePerGas);
+      const estimatedCost = gasUsedBN * maxFeePerGas;
       const estimatedCostUsd = parseFloat(estimatedCost.toString()) / 1e18 * this.gasTokenPrice;
 
       return {
         gasUsed: gasUsed,
-        gasLimit: gasUsedBN.mul(120).div(100).toString(), // 20% buffer
+        gasLimit: ((gasUsedBN * 120n) / 100n).toString(), // 20% buffer
         maxFeePerGas: maxFeePerGas.toString(),
         maxPriorityFeePerGas: priorityFeePerGas,
         estimatedCostWei: estimatedCost.toString(),
         estimatedCostUsd,
       };
     } catch (error) {
-      this.logger.error(`Failed to build gas estimate: ${error}`);
+      logger.error(`Failed to build gas estimate: ${error}`);
       throw new Error(`Gas estimate build failed: ${error}`);
     }
   }
@@ -241,16 +237,16 @@ export class GasEstimator {
    */
   public calculateGasCostUsd(gasUsed: string, gasPrice: string): number {
     try {
-      const gas = BigNumber.from(gasUsed);
-      const price = BigNumber.from(gasPrice);
+      const gas = BigInt(gasUsed);
+      const price = BigInt(gasPrice);
 
-      const totalWei = gas.mul(price);
+      const totalWei = gas * price;
       const totalEth = parseFloat(totalWei.toString()) / 1e18;
       const totalUsd = totalEth * this.gasTokenPrice;
 
       return totalUsd;
     } catch (error) {
-      this.logger.error(`Failed to calculate gas cost: ${error}`);
+      logger.error(`Failed to calculate gas cost: ${error}`);
       return 0;
     }
   }
@@ -268,7 +264,7 @@ export class GasEstimator {
         gasPrices.priorityFeePerGas
       );
     } catch (error) {
-      this.logger.error(`Failed to estimate approve gas: ${error}`);
+      logger.error(`Failed to estimate approve gas: ${error}`);
       return this.buildGasEstimate(
         this.GAS_CONSTANTS.APPROVE.toString(),
         '30000000000',
@@ -291,7 +287,7 @@ export class GasEstimator {
 
       return netProfit > minProfit;
     } catch (error) {
-      this.logger.error(`Failed to check profitability: ${error}`);
+      logger.error(`Failed to check profitability: ${error}`);
       return false;
     }
   }
@@ -317,7 +313,7 @@ export class GasEstimator {
    */
   public setGasTokenPrice(price: number): void {
     this.gasTokenPrice = price;
-    this.logger.info(`Updated gas token price to ${price} USD`);
+    logger.info(`Updated gas token price to ${price} USD`);
   }
 
   /**
