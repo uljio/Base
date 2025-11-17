@@ -242,9 +242,11 @@ export class OpportunityDetector {
       if (amountOut === 0n) return null;
 
       // Determine reserve order for sell pool
-      const sellIsToken0 = sellPool.token1.toLowerCase() === tokenIn.toLowerCase();
-      const sellReserveIn = BigInt(sellIsToken0 ? sellPool.reserve0 : sellPool.reserve1);
-      const sellReserveOut = BigInt(sellIsToken0 ? sellPool.reserve1 : sellPool.reserve0);
+      // In sell phase: we're swapping tokenOut back to tokenIn
+      // So we need: reserveIn = tokenOut reserve, reserveOut = tokenIn reserve
+      const sellTokenOutIsToken0 = sellPool.token0.toLowerCase() === tokenOut.toLowerCase();
+      const sellReserveIn = BigInt(sellTokenOutIsToken0 ? sellPool.reserve0 : sellPool.reserve1);
+      const sellReserveOut = BigInt(sellTokenOutIsToken0 ? sellPool.reserve1 : sellPool.reserve0);
 
       // Validate sell pool reserves
       if (sellReserveIn < minReserve || sellReserveOut < minReserve) {
@@ -281,9 +283,13 @@ export class OpportunityDetector {
         logger.info(`   Amount after buy: ${amountOut}`);
         logger.info(`   Amount final: ${amountFinal}`);
         logger.info(`   Buy pool: ${buyPool.id}`);
-        logger.info(`     Reserve in: ${buyReserveIn}, Reserve out: ${buyReserveOut}`);
+        logger.info(`     token0=${buyPool.token0}, token1=${buyPool.token1}`);
+        logger.info(`     reserve0=${buyPool.reserve0}, reserve1=${buyPool.reserve1}`);
+        logger.info(`     Mapped: Reserve in (${tokenIn}): ${buyReserveIn}, Reserve out (${tokenOut}): ${buyReserveOut}`);
         logger.info(`   Sell pool: ${sellPool.id}`);
-        logger.info(`     Reserve in: ${sellReserveIn}, Reserve out: ${sellReserveOut}`);
+        logger.info(`     token0=${sellPool.token0}, token1=${sellPool.token1}`);
+        logger.info(`     reserve0=${sellPool.reserve0}, reserve1=${sellPool.reserve1}`);
+        logger.info(`     Mapped: Reserve in (${tokenOut}): ${sellReserveIn}, Reserve out (${tokenIn}): ${sellReserveOut}`);
         logger.info(`   Gross profit: ${grossProfit} (${Number(grossProfit) / decimalMultiplier} USD)`);
         logger.info(`   Net profit: ${netProfit} (${netProfitUsd.toFixed(2)} USD)`);
       }
