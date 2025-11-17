@@ -199,6 +199,14 @@ export class GeckoTerminal {
     const token1Address = this.findTokenAddress(pool.relationships.quote_token, included);
 
     if (!token0Address || !token1Address) {
+      logger.debug('Missing token addresses', {
+        poolAddress: address,
+        token0Address,
+        token1Address,
+        baseTokenId: pool.relationships.base_token?.data?.id,
+        quoteTokenId: pool.relationships.quote_token?.data?.id,
+        includedCount: included?.length || 0,
+      });
       return null;
     }
 
@@ -245,18 +253,43 @@ export class GeckoTerminal {
   }
 
   /**
-   * Find token address from included data
+   * Find token address from token reference
+   * Token IDs have format: {network}_{address}
+   * Example: base_0x4200000000000000000000000000000000000006
    */
   private findTokenAddress(tokenRef: any, included?: any[]): string | null {
-    if (!included || !tokenRef?.data?.id) {
+    if (!tokenRef?.data?.id) {
       return null;
     }
 
-    const tokenData = included.find(
-      (item) => item.type === 'token' && item.id === tokenRef.data.id
-    );
+    const tokenId = tokenRef.data.id;
 
-    return tokenData?.attributes?.address || null;
+    // First try to extract address from token ID (format: network_address)
+    const parts = tokenId.split('_');
+    if (parts.length >= 2) {
+      const address = parts.slice(1).join('_'); // Handle addresses with underscores
+      if (address.startsWith('0x') && address.length === 42) {
+        return address.toLowerCase();
+      }
+    }
+
+    // Fallback: Try to find token in included data
+    if (included && included.length > 0) {
+      const tokenData = included.find(
+        (item) => item.type === 'token' && item.id === tokenId
+      );
+
+      if (tokenData?.attributes?.address) {
+        return tokenData.attributes.address.toLowerCase();
+      }
+    }
+
+    logger.debug('Could not extract token address', {
+      tokenId,
+      hasIncluded: !!included,
+    });
+
+    return null;
   }
 
   /**
