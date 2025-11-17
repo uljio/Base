@@ -24,9 +24,16 @@ async function main() {
     }
 
     // Create bot instance
+    // Use dummy key if PRIVATE_KEY is not set or is a placeholder value
+    const hasValidPrivateKey = config.PRIVATE_KEY &&
+                                config.PRIVATE_KEY !== '' &&
+                                !config.PRIVATE_KEY.includes('your_private_key');
+    // Use a valid dummy key for testing (this is a well-known test key with no real funds)
+    const privateKey: string = hasValidPrivateKey ? config.PRIVATE_KEY! : '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+
     const bot = new ArbitrageBot({
       rpcUrl: chain.rpcUrls[0],
-      privateKey: config.PRIVATE_KEY || '0x' + '0'.repeat(64), // Dummy key for dry-run
+      privateKey,
       contractAddress: config.FLASH_LOAN_CONTRACT_ADDRESS || '0x' + '0'.repeat(40),
       contractAbi: FlashLoanArbitrageABI,
       apiPort: config.API_PORT,
