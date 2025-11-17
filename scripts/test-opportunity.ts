@@ -2,7 +2,6 @@
  * Test arbitrage opportunity detection
  */
 
-import { getAlchemyProvider } from '../src/services/rpc/AlchemyProvider';
 import { OpportunityDetector } from '../src/services/arbitrage/OpportunityDetector';
 import { GeckoTerminal } from '../src/services/discovery/GeckoTerminal';
 import { getCurrentChain } from '../src/config/chains';
@@ -13,10 +12,7 @@ async function main() {
   console.log('🧪 Testing arbitrage opportunity detection...\n');
 
   try {
-    // Initialize services
-    const provider = getAlchemyProvider();
-    await provider.connect();
-
+    // Initialize services (no provider needed for this test)
     const chain = getCurrentChain();
     const config = getConfig();
 
@@ -41,7 +37,6 @@ async function main() {
     if (pools.length === 0) {
       console.log('⚠️  No pools found from GeckoTerminal.');
       console.log('   This might be a temporary API issue. Try again later.\n');
-      await provider.disconnect();
       return;
     }
 
@@ -86,8 +81,6 @@ async function main() {
     }
 
     console.log('✅ Test complete!\n');
-
-    await provider.disconnect();
   } catch (error) {
     console.error('❌ Error:', error);
     process.exit(1);
