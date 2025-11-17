@@ -7,11 +7,17 @@ import { GeckoTerminal } from '../src/services/discovery/GeckoTerminal';
 import { getCurrentChain } from '../src/config/chains';
 import { getConfig } from '../src/config/environment';
 import { PoolInfo } from '../src/types/dex.types';
+import sqlite from '../src/database/sqlite';
+import { Pool } from '../src/database/models/Pool';
 
 async function main() {
   console.log('🧪 Testing arbitrage opportunity detection...\n');
 
   try {
+    // Initialize database
+    console.log('Initializing database...\n');
+    await sqlite.initialize();
+
     // Initialize services (no provider needed for this test)
     const chain = getCurrentChain();
     const config = getConfig();
@@ -41,6 +47,21 @@ async function main() {
     }
 
     console.log(`Found ${pools.length} pools\n`);
+
+    // Save pools to database for OpportunityDetector to use
+    console.log('Saving pools to database...\n');
+    for (const pool of pools) {
+      await Pool.upsert({
+        chain_id: chain.chainId,
+        token0: pool.token0.address,
+        token1: pool.token1.address,
+        reserve0: '0', // We don't have reserve data from GeckoTerminal
+        reserve1: '0',
+        fee: pool.fee,
+        liquidity: pool.liquidityUSD.toString(),
+        price: 0, // Will be calculated from reserves if needed
+      });
+    }
 
     // Create a price map from pool data
     const poolPrices = new Map<string, number>();
@@ -81,8 +102,12 @@ async function main() {
     }
 
     console.log('✅ Test complete!\n');
+
+    // Clean up
+    sqlite.close();
   } catch (error) {
     console.error('❌ Error:', error);
+    sqlite.close();
     process.exit(1);
   }
 }
