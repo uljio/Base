@@ -10,6 +10,7 @@ import { PoolInfo } from '../src/types/dex.types';
 import sqlite from '../src/database/sqlite';
 import { Pool } from '../src/database/models/Pool';
 import { ReserveFetcher } from '../src/services/blockchain/ReserveFetcher';
+import { TokenInfo } from '../src/services/blockchain/TokenInfo';
 import { ethers } from 'ethers';
 
 async function main() {
@@ -52,11 +53,12 @@ async function main() {
 
     console.log(`Found ${pools.length} pools\n`);
 
-    // Initialize blockchain provider and reserve fetcher
+    // Initialize blockchain provider and services
     console.log('Initializing blockchain provider...\n');
     const alchemyUrl = `https://base-mainnet.g.alchemy.com/v2/${config.ALCHEMY_API_KEY}`;
     const provider = new ethers.JsonRpcProvider(alchemyUrl);
     const reserveFetcher = new ReserveFetcher(provider);
+    const tokenInfo = new TokenInfo(provider);
 
     // Fetch reserves from blockchain
     console.log('Fetching reserves from blockchain...\n');
@@ -64,6 +66,15 @@ async function main() {
     const reservesMap = await reserveFetcher.batchFetchReserves(poolAddresses);
 
     console.log(`Successfully fetched reserves for ${reservesMap.size}/${pools.length} pools\n`);
+
+    // Fetch token decimals
+    console.log('Fetching token decimals...\n');
+    const allTokens = Array.from(
+      new Set(pools.flatMap((p: PoolInfo) => [p.token0.address, p.token1.address]))
+    ) as string[];
+    const tokenDecimalsMap = await tokenInfo.batchGetDecimals(allTokens);
+
+    console.log(`Fetched decimals for ${tokenDecimalsMap.size} tokens\n`);
 
     // Save pools to database with real reserve data
     console.log('Saving pools to database...\n');
@@ -117,7 +128,8 @@ async function main() {
     // Scan for opportunities
     const opportunities = await opportunityDetector.scanOpportunities(
       tokens,
-      poolPrices
+      poolPrices,
+      tokenDecimalsMap
     );
 
     console.log(`\n📊 Results:`);

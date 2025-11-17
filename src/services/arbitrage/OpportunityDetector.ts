@@ -56,7 +56,8 @@ export class OpportunityDetector {
    */
   public async scanOpportunities(
     tokens: string[],
-    poolPrices: Map<string, number>
+    poolPrices: Map<string, number>,
+    tokenDecimals: Map<string, number> = new Map()
   ): Promise<DetectedOpportunity[]> {
     try {
       const opportunities: DetectedOpportunity[] = [];
@@ -77,7 +78,8 @@ export class OpportunityDetector {
             tokenIn,
             tokenOut,
             pools,
-            poolPrices
+            poolPrices,
+            tokenDecimals
           );
 
           if (directOpportunity) {
@@ -94,7 +96,8 @@ export class OpportunityDetector {
               middleToken,
               tokenOut,
               pools,
-              poolPrices
+              poolPrices,
+              tokenDecimals
             );
 
             if (triangularOpp) {
@@ -129,7 +132,8 @@ export class OpportunityDetector {
     tokenIn: string,
     tokenOut: string,
     pools: any[],
-    poolPrices: Map<string, number>
+    poolPrices: Map<string, number>,
+    tokenDecimals: Map<string, number>
   ): Promise<DetectedOpportunity | null> {
     try {
       // Find all pools connecting these tokens
@@ -166,7 +170,8 @@ export class OpportunityDetector {
             tokenIn,
             tokenOut,
             pool1,
-            pool2
+            pool2,
+            tokenDecimals
           );
 
           if (opportunity && opportunity.profitUsd >= this.minProfitUsd) {
@@ -178,7 +183,8 @@ export class OpportunityDetector {
             tokenIn,
             tokenOut,
             pool2,
-            pool1
+            pool1,
+            tokenDecimals
           );
 
           if (reverseOpportunity && reverseOpportunity.profitUsd >= this.minProfitUsd) {
@@ -201,11 +207,17 @@ export class OpportunityDetector {
     tokenIn: string,
     tokenOut: string,
     buyPool: any,
-    sellPool: any
+    sellPool: any,
+    tokenDecimals: Map<string, number>
   ): DetectedOpportunity | null {
     try {
-      // Trade size in wei (assume 18 decimals for stablecoin)
-      const amountIn = BigInt(Math.floor(this.tradeSizeUsd * 1e18));
+      // Get token decimals (default to 18 if not found)
+      const decimals = tokenDecimals.get(tokenIn.toLowerCase()) || 18;
+      const decimalMultiplier = Math.pow(10, decimals);
+
+      // Trade size in token wei (using correct decimals)
+      // For stablecoins: $50 USD ≈ 50 tokens
+      const amountIn = BigInt(Math.floor(this.tradeSizeUsd * decimalMultiplier));
 
       // Determine reserve order for buy pool
       const buyIsToken0 = buyPool.token0.toLowerCase() === tokenIn.toLowerCase();
@@ -240,9 +252,13 @@ export class OpportunityDetector {
       // Calculate profit
       const grossProfit = amountFinal - amountIn;
       const flashloanFee = amountIn * BigInt(Math.floor(this.config.FLASHLOAN_FEE_PERCENTAGE * 100)) / 10000n;
-      const gasCostWei = BigInt(Math.floor(this.config.ESTIMATED_GAS_COST_USD * 1e18));
+
+      // Gas cost in same token decimals
+      const gasCostWei = BigInt(Math.floor(this.config.ESTIMATED_GAS_COST_USD * decimalMultiplier));
       const netProfit = grossProfit - flashloanFee - gasCostWei;
-      const netProfitUsd = Number(netProfit) / 1e18;
+
+      // Convert to USD using correct decimals
+      const netProfitUsd = Number(netProfit) / decimalMultiplier;
 
       if (netProfitUsd < this.minProfitUsd) {
         return null;
@@ -280,7 +296,8 @@ export class OpportunityDetector {
     tokenB: string,
     tokenC: string,
     pools: any[],
-    poolPrices: Map<string, number>
+    poolPrices: Map<string, number>,
+    tokenDecimals: Map<string, number>
   ): Promise<DetectedOpportunity | null> {
     try {
       // Find pools for each leg: A->B, B->C, C->A
@@ -315,8 +332,12 @@ export class OpportunityDetector {
         return null;
       }
 
-      // Trade size in wei (assume 18 decimals)
-      const startAmount = BigInt(Math.floor(this.tradeSizeUsd * 1e18));
+      // Get token decimals (default to 18 if not found)
+      const decimals = tokenDecimals.get(tokenA.toLowerCase()) || 18;
+      const decimalMultiplier = Math.pow(10, decimals);
+
+      // Trade size in token wei (using correct decimals)
+      const startAmount = BigInt(Math.floor(this.tradeSizeUsd * decimalMultiplier));
 
       // Leg 1: A -> B
       const isAToken0_AB = poolAB.token0.toLowerCase() === tokenA.toLowerCase();
@@ -360,9 +381,13 @@ export class OpportunityDetector {
       // Calculate profit
       const grossProfit = afterCA - startAmount;
       const flashloanFee = startAmount * BigInt(Math.floor(this.config.FLASHLOAN_FEE_PERCENTAGE * 100)) / 10000n;
-      const gasCostWei = BigInt(Math.floor(this.config.ESTIMATED_GAS_COST_USD * 1e18));
+
+      // Gas cost in same token decimals
+      const gasCostWei = BigInt(Math.floor(this.config.ESTIMATED_GAS_COST_USD * decimalMultiplier));
       const netProfit = grossProfit - flashloanFee - gasCostWei;
-      const netProfitUsd = Number(netProfit) / 1e18;
+
+      // Convert to USD using correct decimals
+      const netProfitUsd = Number(netProfit) / decimalMultiplier;
 
       if (netProfitUsd < this.minProfitUsd) {
         return null;
