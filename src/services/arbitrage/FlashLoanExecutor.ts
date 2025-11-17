@@ -1,5 +1,5 @@
 import { Contract, ContractTransactionResponse, ethers } from 'ethers';
-import { Logger } from '../../utils/logger';
+import { logger } from '../../services/utils/Logger';
 
 export interface FlashLoanParams {
   token: string;
@@ -21,7 +21,7 @@ export class FlashLoanExecutor {
   private contract: Contract;
   private signer: ethers.Signer;
   private dryRunMode: boolean;
-  private logger: Logger;
+  // logger imported from utils
 
   constructor(
     contract: Contract,
@@ -31,23 +31,22 @@ export class FlashLoanExecutor {
     this.contract = contract;
     this.signer = signer;
     this.dryRunMode = dryRunMode;
-    this.logger = new Logger('FlashLoanExecutor');
-  }
+}
 
   /**
    * Execute a flash loan with encoded parameters
    */
   async executeFlashLoan(params: FlashLoanParams): Promise<FlashLoanResult> {
     try {
-      this.logger.info(`Executing flash loan with params: ${JSON.stringify(params)}`);
+      logger.info(`Executing flash loan with params: ${JSON.stringify(params)}`);
 
       if (this.dryRunMode) {
-        this.logger.info('DRY RUN MODE - Simulating transaction');
+        logger.info('DRY RUN MODE - Simulating transaction');
         return this.simulateFlashLoan(params);
       }
 
       const encodedParams = this.encodeParameters(params);
-      this.logger.debug(`Encoded parameters: ${encodedParams}`);
+      logger.debug(`Encoded parameters: ${encodedParams}`);
 
       const tx = await this.contract.executeFlashLoan(
         params.token,
@@ -58,7 +57,7 @@ export class FlashLoanExecutor {
         { gasLimit: 500000 }
       );
 
-      this.logger.info(`Transaction submitted: ${tx.hash}`);
+      logger.info(`Transaction submitted: ${tx.hash}`);
 
       const receipt = await tx.wait(1);
 
@@ -69,7 +68,7 @@ export class FlashLoanExecutor {
         };
       }
 
-      this.logger.info(`Transaction confirmed in block ${receipt.blockNumber}`);
+      logger.info(`Transaction confirmed in block ${receipt.blockNumber}`);
 
       return {
         success: true,
@@ -78,7 +77,7 @@ export class FlashLoanExecutor {
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Flash loan execution failed: ${errorMessage}`);
+      logger.error(`Flash loan execution failed: ${errorMessage}`);
       return {
         success: false,
         error: errorMessage,
@@ -98,7 +97,7 @@ export class FlashLoanExecutor {
       return encoded;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Parameter encoding failed: ${errorMessage}`);
+      logger.error(`Parameter encoding failed: ${errorMessage}`);
       throw error;
     }
   }
@@ -117,7 +116,7 @@ export class FlashLoanExecutor {
         { gasLimit: 500000 }
       );
 
-      this.logger.info(`Simulation successful: ${JSON.stringify(result)}`);
+      logger.info(`Simulation successful: ${JSON.stringify(result)}`);
 
       return {
         success: true,
@@ -125,7 +124,7 @@ export class FlashLoanExecutor {
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Flash loan simulation failed: ${errorMessage}`);
+      logger.error(`Flash loan simulation failed: ${errorMessage}`);
       return {
         success: false,
         error: errorMessage,
@@ -138,7 +137,7 @@ export class FlashLoanExecutor {
    */
   setDryRunMode(enabled: boolean): void {
     this.dryRunMode = enabled;
-    this.logger.info(`Dry run mode set to: ${enabled}`);
+    logger.info(`Dry run mode set to: ${enabled}`);
   }
 
   /**

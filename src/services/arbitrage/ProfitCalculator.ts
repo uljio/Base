@@ -1,7 +1,6 @@
 'use strict';
 
-import { Logger } from '../../utils/Logger';
-import { BigNumber } from 'ethers';
+import { logger } from '../../services/utils/Logger';
 
 /**
  * Profit Calculator Service
@@ -20,9 +19,7 @@ export interface ProfitCalculation {
 }
 
 export class ProfitCalculator {
-  private static readonly logger = Logger.getInstance();
-
-  /**
+/**
    * Calculate profit for an arbitrage opportunity
    */
   public static calculateProfit(
@@ -36,31 +33,29 @@ export class ProfitCalculator {
     gasTokenPrice: number = 1
   ): ProfitCalculation {
     try {
-      const inBN = BigNumber.from(amountIn);
-      const outBN = BigNumber.from(amountOutPredicted);
-      const gasUsedBN = BigNumber.from(gasUsed);
-      const gasPriceBN = BigNumber.from(gasPrice);
+      const inBN = BigInt(amountIn);
+      const outBN = BigInt(amountOutPredicted);
+      const gasUsedBN = BigInt(gasUsed);
+      const gasPriceBN = BigInt(gasPrice);
 
       // Calculate gross profit (output - input)
-      const grossProfit = outBN.sub(inBN);
+      const grossProfit = outBN - inBN;
 
       // Calculate gas cost in the output token
-      const gasCostWei = gasUsedBN.mul(gasPriceBN);
+      const gasCostWei = gasUsedBN * gasPriceBN;
       const gasCostInTokens = this.convertGasToToken(gasCostWei, gasTokenPrice, tokenPrice);
 
       // Calculate slippage loss
-      const slippageLoss = outBN.mul(Math.floor(slippagePercentage * 100)).div(10000);
+      const slippageLoss = (outBN * BigInt(Math.floor(slippagePercentage * 100))) / 10000n;
 
       // Calculate protocol fees
-      const fees = outBN.mul(Math.floor(protocolFeePercentage * 100)).div(10000);
+      const fees = (outBN * BigInt(Math.floor(protocolFeePercentage * 100))) / 10000n;
 
       // Calculate total costs
-      const totalCosts = BigNumber.from(gasCostInTokens)
-        .add(slippageLoss)
-        .add(fees);
+      const totalCosts = BigInt(gasCostInTokens) + slippageLoss + fees;
 
       // Calculate net profit
-      const netProfit = grossProfit.sub(totalCosts);
+      const netProfit = grossProfit - totalCosts;
 
       // Convert to USD
       const netProfitUsd = parseFloat(
@@ -68,7 +63,7 @@ export class ProfitCalculator {
       ) / 1e18 * tokenPrice;
 
       // Calculate profit margin percentage
-      const profitMarginPercentage = inBN.gt(0)
+      const profitMarginPercentage = inBN > 0n
         ? (parseFloat(netProfit.toString()) / parseFloat(inBN.toString())) * 100
         : 0;
 
@@ -87,7 +82,7 @@ export class ProfitCalculator {
         roiPercentage: isFinite(roiPercentage) ? roiPercentage : 0,
       };
     } catch (error) {
-      this.logger.error(`Failed to calculate profit: ${error}`);
+      logger.error(`Failed to calculate profit: ${error}`);
       throw new Error(`Profit calculation failed: ${error}`);
     }
   }
@@ -100,12 +95,12 @@ export class ProfitCalculator {
     slippagePercentage: number = 0.5
   ): string {
     try {
-      const expected = BigNumber.from(expectedOutput);
-      const slippage = expected.mul(Math.floor(slippagePercentage * 100)).div(10000);
-      const minimum = expected.sub(slippage);
+      const expected = BigInt(expectedOutput);
+      const slippage = (expected * BigInt(Math.floor(slippagePercentage * 100))) / 10000n;
+      const minimum = expected - slippage;
       return minimum.toString();
     } catch (error) {
-      this.logger.error(`Failed to calculate minimum output: ${error}`);
+      logger.error(`Failed to calculate minimum output: ${error}`);
       throw new Error(`Minimum output calculation failed: ${error}`);
     }
   }
@@ -120,22 +115,19 @@ export class ProfitCalculator {
     tokenPrice: number = 1
   ): string {
     try {
-      const profit = BigNumber.from(grossProfit);
-      const gas = BigNumber.from(gasUsed);
+      const profit = BigInt(grossProfit);
+      const gas = BigInt(gasUsed);
 
-      if (gas.eq(0)) {
+      if (gas === 0n) {
         return '0';
       }
 
       // breakEvenGasPrice = (profit * tokenPrice) / (gas * gasTokenPrice)
-      const breakEven = profit
-        .mul(Math.floor(tokenPrice * 1e6))
-        .div(gas)
-        .div(Math.floor(gasTokenPrice * 1e6));
+      const breakEven = (profit * BigInt(Math.floor(tokenPrice * 1e6))) / gas / BigInt(Math.floor(gasTokenPrice * 1e6));
 
       return breakEven.toString();
     } catch (error) {
-      this.logger.error(`Failed to calculate break-even gas price: ${error}`);
+      logger.error(`Failed to calculate break-even gas price: ${error}`);
       throw new Error(`Break-even calculation failed: ${error}`);
     }
   }
@@ -149,16 +141,16 @@ export class ProfitCalculator {
     gasTokenPrice: number = 1
   ): number {
     try {
-      const gas = BigNumber.from(gasUsed);
-      const price = BigNumber.from(gasPrice);
+      const gas = BigInt(gasUsed);
+      const price = BigInt(gasPrice);
 
-      const gasCostWei = gas.mul(price);
+      const gasCostWei = gas * price;
       const gasCostEth = parseFloat(gasCostWei.toString()) / 1e18;
       const gasCostUsd = gasCostEth * gasTokenPrice;
 
       return gasCostUsd;
     } catch (error) {
-      this.logger.error(`Failed to estimate gas cost: ${error}`);
+      logger.error(`Failed to estimate gas cost: ${error}`);
       return 0;
     }
   }
@@ -172,25 +164,25 @@ export class ProfitCalculator {
     reserveOut: string
   ): number {
     try {
-      const inBN = BigNumber.from(amountIn);
-      const resInBN = BigNumber.from(reserveIn);
-      const resOutBN = BigNumber.from(reserveOut);
+      const inBN = BigInt(amountIn);
+      const resInBN = BigInt(reserveIn);
+      const resOutBN = BigInt(reserveOut);
 
       // Calculate spot price before swap
-      const spotPrice = resOutBN.mul(1e18).div(resInBN);
+      const spotPrice = (resOutBN * BigInt(1e18)) / resInBN;
 
       // Calculate execution price after swap
       // Using constant product formula: (x + a) * (y - b) = x * y
       // where b = y * a / (x + a)
-      const amountOut = resOutBN.mul(inBN).div(resInBN.add(inBN));
-      const executionPrice = amountOut.mul(1e18).div(inBN);
+      const amountOut = (resOutBN * inBN) / (resInBN + inBN);
+      const executionPrice = (amountOut * BigInt(1e18)) / inBN;
 
       // Price impact = (spotPrice - executionPrice) / spotPrice
-      const impact = spotPrice.sub(executionPrice).mul(10000).div(spotPrice);
+      const impact = ((spotPrice - executionPrice) * 10000n) / spotPrice;
 
       return parseFloat(impact.toString()) / 10000;
     } catch (error) {
-      this.logger.error(`Failed to calculate price impact: ${error}`);
+      logger.error(`Failed to calculate price impact: ${error}`);
       return 0;
     }
   }
@@ -209,7 +201,7 @@ export class ProfitCalculator {
       // Ensure reasonable bounds
       return Math.min(Math.max(slippage, 0.1), 10); // Between 0.1% and 10%
     } catch (error) {
-      this.logger.error(`Failed to estimate slippage tolerance: ${error}`);
+      logger.error(`Failed to estimate slippage tolerance: ${error}`);
       return 1; // Default to 1%
     }
   }
@@ -232,7 +224,7 @@ export class ProfitCalculator {
 
       return profit / capital;
     } catch (error) {
-      this.logger.error(`Failed to calculate profit per dollar: ${error}`);
+      logger.error(`Failed to calculate profit per dollar: ${error}`);
       return 0;
     }
   }
@@ -264,7 +256,7 @@ export class ProfitCalculator {
 
       return sorted;
     } catch (error) {
-      this.logger.error(`Failed to rank opportunities: ${error}`);
+      logger.error(`Failed to rank opportunities: ${error}`);
       return opportunities;
     }
   }
@@ -273,7 +265,7 @@ export class ProfitCalculator {
    * Convert gas costs from gas token to target token
    */
   private static convertGasToToken(
-    gasCostWei: BigNumber,
+    gasCostWei: bigint,
     gasTokenPrice: number = 1,
     tokenPrice: number = 1
   ): string {
@@ -283,13 +275,11 @@ export class ProfitCalculator {
 
       // ETH to target token
       // gasCostInToken = gasEth * gasTokenPrice / tokenPrice
-      const gasCostInToken = gasEth
-        .mul(Math.floor(gasTokenPrice * 1e6))
-        .div(Math.floor(tokenPrice * 1e6));
+      const gasCostInToken = (gasEth * BigInt(Math.floor(gasTokenPrice * 1e6))) / BigInt(Math.floor(tokenPrice * 1e6));
 
       return gasCostInToken.toString();
     } catch (error) {
-      this.logger.error(`Failed to convert gas to token: ${error}`);
+      logger.error(`Failed to convert gas to token: ${error}`);
       return '0';
     }
   }

@@ -1,7 +1,7 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import { Logger } from '../utils/logger';
+import { logger } from '../services/utils/Logger';
 
 // Import routes
 import statusRouter from './routes/status';
@@ -26,14 +26,13 @@ const DEFAULT_CONFIG: ServerConfig = {
 
 export class APIServer {
   private app: Express;
-  private logger: Logger;
+  // logger imported from utils
   private config: ServerConfig;
   private limiter: any;
 
   constructor(config: Partial<ServerConfig> = {}) {
     this.app = express();
-    this.logger = new Logger('APIServer');
-    this.config = { ...DEFAULT_CONFIG, ...config };
+this.config = { ...DEFAULT_CONFIG, ...config };
 
     // Configure rate limiter
     this.limiter = rateLimit({
@@ -72,7 +71,7 @@ export class APIServer {
 
     // Request logging middleware
     this.app.use((req: Request, res: Response, next: NextFunction) => {
-      this.logger.info(`${req.method} ${req.path}`);
+      logger.info(`${req.method} ${req.path}`);
       next();
     });
   }
@@ -105,7 +104,7 @@ export class APIServer {
    */
   private setupErrorHandling(): void {
     this.app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-      this.logger.error(`Error: ${err.message}`);
+      logger.error(`Error: ${err.message}`);
 
       res.status(err.statusCode || 500).json({
         error: err.message || 'Internal Server Error',
@@ -120,7 +119,7 @@ export class APIServer {
   async start(): Promise<void> {
     return new Promise((resolve) => {
       this.app.listen(this.config.port, this.config.host, () => {
-        this.logger.info(
+        logger.info(
           `Server running on http://${this.config.host}:${this.config.port}`
         );
         resolve();
@@ -132,7 +131,7 @@ export class APIServer {
    * Stop the server
    */
   async stop(): Promise<void> {
-    this.logger.info('Stopping server...');
+    logger.info('Stopping server...');
   }
 
   /**

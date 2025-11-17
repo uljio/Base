@@ -1,7 +1,7 @@
 'use strict';
 
-import { Logger } from '../../utils/Logger';
-import { BigNumber, ethers } from 'ethers';
+import { logger } from '../../services/utils/Logger';
+import { ethers, Interface, isAddress, isHexString, Transaction } from 'ethers';
 
 /**
  * Transaction Builder Service
@@ -33,8 +33,7 @@ export interface SignedTransaction {
 }
 
 export class TransactionBuilder {
-  private static readonly logger = Logger.getInstance();
-  private readonly signer: ethers.Signer | null;
+private readonly signer: ethers.Signer | null;
   private readonly chainId: number;
 
   constructor(chainId: number, signer?: ethers.Signer) {
@@ -65,15 +64,16 @@ export class TransactionBuilder {
 
       // Get nonce if not provided
       let txNonce = nonce;
-      if (txNonce === undefined && this.signer) {
-        txNonce = await this.signer.getTransactionCount();
+      if (txNonce === undefined && this.signer && this.signer.provider) {
+        const address = await this.signer.getAddress();
+        txNonce = await this.signer.provider.getTransactionCount(address);
       }
 
       // Validate fee ordering
-      const maxPriorityBN = BigNumber.from(maxPriorityFeePerGas);
-      const maxFeeBN = BigNumber.from(maxFeePerGas);
+      const maxPriorityBN = BigInt(maxPriorityFeePerGas);
+      const maxFeeBN = BigInt(maxFeePerGas);
 
-      if (maxFeeBN.lt(maxPriorityBN)) {
+      if (maxFeeBN < maxPriorityBN) {
         throw new Error('maxFeePerGas must be >= maxPriorityFeePerGas');
       }
 
@@ -88,7 +88,7 @@ export class TransactionBuilder {
         chainId: this.chainId,
       };
     } catch (error) {
-      this.logger.error(`Failed to build transaction: ${error}`);
+      logger.error(`Failed to build transaction: ${error}`);
       throw new Error(`Transaction build failed: ${error}`);
     }
   }
@@ -110,7 +110,7 @@ export class TransactionBuilder {
     try {
       // Encode swap function call
       // This is a simplified version - real implementation depends on router ABI
-      const iface = new ethers.utils.Interface([
+      const iface = new Interface([
         'function swap(address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOutMin) external returns (uint256)',
       ]);
 
@@ -132,7 +132,7 @@ export class TransactionBuilder {
         chainId: this.chainId,
       };
     } catch (error) {
-      this.logger.error(`Failed to build flash swap: ${error}`);
+      logger.error(`Failed to build flash swap: ${error}`);
       throw new Error(`Flash swap build failed: ${error}`);
     }
   }
@@ -159,7 +159,7 @@ export class TransactionBuilder {
       }
 
       // Encode swap function
-      const iface = new ethers.utils.Interface([
+      const iface = new Interface([
         'function swapPath(address[] calldata path, uint256[] calldata amounts) external returns (uint256)',
       ]);
 
@@ -176,7 +176,7 @@ export class TransactionBuilder {
         chainId: this.chainId,
       };
     } catch (error) {
-      this.logger.error(`Failed to build multi-hop swap: ${error}`);
+      logger.error(`Failed to build multi-hop swap: ${error}`);
       throw new Error(`Multi-hop swap build failed: ${error}`);
     }
   }
@@ -195,9 +195,9 @@ export class TransactionBuilder {
         to: config.to,
         data: config.data,
         value: config.value || '0',
-        maxPriorityFeePerGas: BigNumber.from(config.maxPriorityFeePerGas),
-        maxFeePerGas: BigNumber.from(config.maxFeePerGas),
-        gasLimit: BigNumber.from(config.gasLimit),
+        maxPriorityFeePerGas: BigInt(config.maxPriorityFeePerGas),
+        maxFeePerGas: BigInt(config.maxFeePerGas),
+        gasLimit: BigInt(config.gasLimit),
         nonce: config.nonce,
         chainId: config.chainId,
         type: 2, // EIP-1559
@@ -205,7 +205,7 @@ export class TransactionBuilder {
 
       // Sign transaction
       const signedTx = await this.signer.signTransaction(tx);
-      const parsedTx = ethers.utils.parseTransaction(signedTx);
+      const parsedTx = Transaction.from(signedTx);
 
       return {
         hash: parsedTx.hash || '',
@@ -216,12 +216,12 @@ export class TransactionBuilder {
         gasLimit: parsedTx.gasLimit?.toString() || '0',
         gasPrice: parsedTx.gasPrice?.toString() || '0',
         nonce: parsedTx.nonce || 0,
-        chainId: parsedTx.chainId || this.chainId,
-        signature: parsedTx.signature || '',
+        chainId: Number(parsedTx.chainId) || this.chainId,
+        signature: parsedTx.signature ? JSON.stringify(parsedTx.signature) : '',
         serialized: signedTx,
       };
     } catch (error) {
-      this.logger.error(`Failed to sign transaction: ${error}`);
+      logger.error(`Failed to sign transaction: ${error}`);
       throw new Error(`Transaction signing failed: ${error}`);
     }
   }
@@ -235,8 +235,8 @@ export class TransactionBuilder {
     callData: string = ''
   ): string {
     try {
-      const gasBN = BigNumber.from(gasUsed);
-      const feeBN = BigNumber.from(maxFeePerGas);
+      const gasBN = BigInt(gasUsed);
+      const feeBN = BigInt(maxFeePerGas);
 
       // Calculate total gas cost
       let actualGas = gasBN;
@@ -244,13 +244,13 @@ export class TransactionBuilder {
       // Add calldata cost if provided
       if (callData) {
         const calldataGas = this.calculateCalldataGas(callData);
-        actualGas = actualGas.add(calldataGas);
+        actualGas = actualGas + calldataGas;
       }
 
-      const cost = actualGas.mul(feeBN);
+      const cost = actualGas * feeBN;
       return cost.toString();
     } catch (error) {
-      this.logger.error(`Failed to estimate transaction cost: ${error}`);
+      logger.error(`Failed to estimate transaction cost: ${error}`);
       return '0';
     }
   }
@@ -258,22 +258,22 @@ export class TransactionBuilder {
   /**
    * Calculate gas cost of calldata
    */
-  private calculateCalldataGas(callData: string): BigNumber {
+  private calculateCalldataGas(callData: string): bigint {
     try {
       const data = callData.startsWith('0x') ? callData.slice(2) : callData;
-      let gasCost = BigNumber.from(0);
+      let gasCost = 0n;
 
       for (let i = 0; i < data.length; i += 2) {
         const byte = data.slice(i, i + 2);
         // 4 gas for zero bytes, 16 gas for non-zero bytes
-        const cost = byte === '00' ? 4 : 16;
-        gasCost = gasCost.add(cost);
+        const cost = byte === '00' ? 4n : 16n;
+        gasCost = gasCost + cost;
       }
 
       return gasCost;
     } catch (error) {
-      this.logger.error(`Failed to calculate calldata gas: ${error}`);
-      return BigNumber.from(0);
+      logger.error(`Failed to calculate calldata gas: ${error}`);
+      return 0n;
     }
   }
 
@@ -286,19 +286,19 @@ export class TransactionBuilder {
     priorityFeePerGas: string = '2000000000' // 2 gwei
   ): { maxFeePerGas: string; maxPriorityFeePerGas: string } {
     try {
-      const baseBN = BigNumber.from(baseFeePerGas);
-      const priorityBN = BigNumber.from(priorityFeePerGas);
+      const baseBN = BigInt(baseFeePerGas);
+      const priorityBN = BigInt(priorityFeePerGas);
 
       // maxFeePerGas = (baseFee * multiplier) + priorityFee
-      const multiplied = baseBN.mul(Math.floor(gasPriceMultiplier * 1000)).div(1000);
-      const maxFee = multiplied.add(priorityBN);
+      const multiplied = (baseBN * BigInt(Math.floor(gasPriceMultiplier * 1000))) / 1000n;
+      const maxFee = multiplied + priorityBN;
 
       return {
         maxFeePerGas: maxFee.toString(),
         maxPriorityFeePerGas: priorityFeePerGas,
       };
     } catch (error) {
-      this.logger.error(`Failed to calculate optimal gas price: ${error}`);
+      logger.error(`Failed to calculate optimal gas price: ${error}`);
       return {
         maxFeePerGas: baseFeePerGas,
         maxPriorityFeePerGas: priorityFeePerGas,
@@ -324,26 +324,26 @@ export class TransactionBuilder {
       this.validateNumberString(config.value || '0');
 
       // Validate fee ordering
-      const maxPriority = BigNumber.from(config.maxPriorityFeePerGas);
-      const maxFee = BigNumber.from(config.maxFeePerGas);
+      const maxPriority = BigInt(config.maxPriorityFeePerGas);
+      const maxFee = BigInt(config.maxFeePerGas);
 
-      if (maxFee.lt(maxPriority)) {
+      if (maxFee < maxPriority) {
         throw new Error('maxFeePerGas < maxPriorityFeePerGas');
       }
 
       // Validate gas limit
-      const gasLimit = BigNumber.from(config.gasLimit);
-      if (gasLimit.lt(21000)) {
+      const gasLimit = BigInt(config.gasLimit);
+      if (gasLimit < 21000n) {
         throw new Error('Gas limit below minimum (21000)');
       }
 
-      if (gasLimit.gt(BigNumber.from('30000000'))) {
+      if (gasLimit > 30000000n) {
         throw new Error('Gas limit exceeds maximum');
       }
 
       return true;
     } catch (error) {
-      this.logger.error(`Transaction validation failed: ${error}`);
+      logger.error(`Transaction validation failed: ${error}`);
       return false;
     }
   }
@@ -352,7 +352,7 @@ export class TransactionBuilder {
    * Validate address format
    */
   private validateAddress(address: string): void {
-    if (!ethers.utils.isAddress(address)) {
+    if (!isAddress(address)) {
       throw new Error(`Invalid address: ${address}`);
     }
   }
@@ -361,7 +361,7 @@ export class TransactionBuilder {
    * Validate hex string
    */
   private validateHexString(value: string): void {
-    if (!ethers.utils.isHexString(value)) {
+    if (!isHexString(value)) {
       throw new Error(`Invalid hex string: ${value}`);
     }
   }
@@ -371,7 +371,7 @@ export class TransactionBuilder {
    */
   private validateNumberString(value: string): void {
     try {
-      BigNumber.from(value);
+      BigInt(value);
     } catch (error) {
       throw new Error(`Invalid number string: ${value}`);
     }

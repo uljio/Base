@@ -2,7 +2,7 @@
 
 import Database from 'better-sqlite3';
 import path from 'path';
-import { Logger } from '../utils/Logger';
+import { logger } from '../services/utils/Logger';
 
 /**
  * SQLite Database Manager with Connection Pooling
@@ -12,14 +12,13 @@ class SQLiteDatabase {
   private static instance: SQLiteDatabase;
   private db: Database.Database | null = null;
   private readonly dbPath: string;
-  private readonly logger: Logger;
+  // logger imported from utils
   private maxConnections: number = 5;
   private activeConnections: number = 0;
 
   private constructor(dbPath: string = path.join(process.cwd(), 'data', 'arbitrage.db')) {
     this.dbPath = dbPath;
-    this.logger = Logger.getInstance();
-  }
+}
 
   /**
    * Get singleton instance of SQLiteDatabase
@@ -49,9 +48,9 @@ class SQLiteDatabase {
       this.db.pragma('foreign_keys = ON');
 
       await this.runMigrations();
-      this.logger.info('SQLite database initialized successfully');
+      logger.info('SQLite database initialized successfully');
     } catch (error) {
-      this.logger.error(`Failed to initialize database: ${error}`);
+      logger.error(`Failed to initialize database: ${error}`);
       throw new Error(`Database initialization failed: ${error}`);
     }
   }
@@ -118,9 +117,9 @@ class SQLiteDatabase {
         CREATE INDEX IF NOT EXISTS idx_pools_chain_token ON pools(chain_id, token0, token1);
       `);
 
-      this.logger.info('Database migrations completed');
+      logger.info('Database migrations completed');
     } catch (error) {
-      this.logger.error(`Migration failed: ${error}`);
+      logger.error(`Migration failed: ${error}`);
       throw new Error(`Database migration failed: ${error}`);
     }
   }
@@ -134,7 +133,7 @@ class SQLiteDatabase {
     }
 
     if (this.activeConnections >= this.maxConnections) {
-      this.logger.warn(`Reached max connections (${this.maxConnections}), waiting...`);
+      logger.warn(`Reached max connections (${this.maxConnections}), waiting...`);
     }
 
     this.activeConnections++;
@@ -178,7 +177,7 @@ class SQLiteDatabase {
     if (this.db) {
       this.db.close();
       this.db = null;
-      this.logger.info('Database connection closed');
+      logger.info('Database connection closed');
     }
   }
 

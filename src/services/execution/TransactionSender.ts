@@ -1,7 +1,7 @@
 'use strict';
 
-import { Logger } from '../../utils/Logger';
-import { ethers, BigNumber } from 'ethers';
+import { logger } from '../../services/utils/Logger';
+import { Provider } from 'ethers';
 
 /**
  * Transaction Sender Service
@@ -32,9 +32,8 @@ export interface PendingTransaction {
 }
 
 export class TransactionSender {
-  private static readonly logger = Logger.getInstance();
-  private readonly provider: ethers.providers.Provider;
-  private readonly signer: ethers.Signer;
+private readonly provider: Provider;
+  private readonly signer: any;
   private readonly chainId: number;
   private readonly confirmationTarget: number = 1;
   private readonly maxRetries: number = 3;
@@ -44,8 +43,8 @@ export class TransactionSender {
   private transactionCache: Map<string, TransactionStatus> = new Map();
 
   constructor(
-    provider: ethers.providers.Provider,
-    signer: ethers.Signer,
+    provider: Provider,
+    signer: any,
     chainId: number,
     confirmationTarget: number = 1,
     maxRetries: number = 3
@@ -74,20 +73,23 @@ export class TransactionSender {
 
       for (let attempt = 0; attempt < this.maxRetries; attempt++) {
         try {
-          this.logger.info(`Sending transaction (attempt ${attempt + 1}/${this.maxRetries})`);
+          logger.info(`Sending transaction (attempt ${attempt + 1}/${this.maxRetries})`);
 
           const tx = await this.signer.sendTransaction({
             to,
             data,
-            value: BigNumber.from(value),
-            gasLimit: BigNumber.from(gasLimit),
-            maxPriorityFeePerGas: BigNumber.from(maxPriorityFeePerGas),
-            maxFeePerGas: BigNumber.from(maxFeePerGas),
+            value: BigInt(value),
+            gasLimit: BigInt(gasLimit),
+            maxPriorityFeePerGas: BigInt(maxPriorityFeePerGas),
+            maxFeePerGas: BigInt(maxFeePerGas),
             type: 2,
           });
 
           txHash = tx.hash;
-          this.logger.info(`Transaction sent: ${txHash}`);
+          if (!txHash) {
+            throw new Error('Transaction hash is null');
+          }
+          logger.info(`Transaction sent: ${txHash}`);
 
           // Store pending transaction
           const signerAddress = await this.signer.getAddress();
@@ -107,7 +109,7 @@ export class TransactionSender {
           return txHash;
         } catch (error) {
           lastError = error as Error;
-          this.logger.warn(`Transaction send failed (attempt ${attempt + 1}): ${error}`);
+          logger.warn(`Transaction send failed (attempt ${attempt + 1}): ${error}`);
 
           if (attempt < this.maxRetries - 1) {
             await this.delay(this.retryDelay * (attempt + 1)); // Exponential backoff
@@ -117,7 +119,7 @@ export class TransactionSender {
 
       throw lastError || new Error('Transaction send failed after all retries');
     } catch (error) {
-      this.logger.error(`Failed to send transaction: ${error}`);
+      logger.error(`Failed to send transaction: ${error}`);
       throw new Error(`Transaction send failed: ${error}`);
     }
   }
@@ -168,9 +170,9 @@ export class TransactionSender {
             status: receipt.status === 1 ? 'confirmed' : 'reverted',
             blockNumber,
             gasUsed: receipt.gasUsed?.toString(),
-            gasPrice: receipt.effectiveGasPrice?.toString(),
+            gasPrice: receipt.gasPrice?.toString(), // ethers v6: use gasPrice directly
             transactionFee: receipt.gasUsed
-              ? receipt.gasUsed.mul(receipt.effectiveGasPrice || 0).toString()
+              ? (receipt.gasUsed * (receipt.gasPrice || 0n)).toString()
               : undefined,
             confirmations,
           };
@@ -179,14 +181,14 @@ export class TransactionSender {
           this.transactionCache.set(txHash, status);
           this.pendingTransactions.delete(txHash);
 
-          this.logger.info(
+          logger.info(
             `Transaction ${txHash} ${status.status} with ${confirmations} confirmations`
           );
 
           return status;
         } catch (error) {
           lastError = error as Error;
-          this.logger.warn(`Failed to monitor transaction: ${error}`);
+          logger.warn(`Failed to monitor transaction: ${error}`);
           await this.delay(2000); // Wait before retry
         }
       }
@@ -198,10 +200,10 @@ export class TransactionSender {
         error: `Transaction monitoring timeout after ${timeout}ms`,
       };
 
-      this.logger.warn(`Transaction monitoring timeout: ${txHash}`);
+      logger.warn(`Transaction monitoring timeout: ${txHash}`);
       return timeoutStatus;
     } catch (error) {
-      this.logger.error(`Failed to monitor transaction: ${error}`);
+      logger.error(`Failed to monitor transaction: ${error}`);
       throw new Error(`Transaction monitoring failed: ${error}`);
     }
   }
@@ -223,7 +225,7 @@ export class TransactionSender {
 
       return false;
     } catch (error) {
-      this.logger.error(`Failed to wait for confirmation: ${error}`);
+      logger.error(`Failed to wait for confirmation: ${error}`);
       return false;
     }
   }
@@ -277,7 +279,7 @@ export class TransactionSender {
         error: 'Transaction not found on blockchain',
       };
     } catch (error) {
-      this.logger.error(`Failed to get transaction status: ${error}`);
+      logger.error(`Failed to get transaction status: ${error}`);
       return {
         hash: txHash,
         status: 'failed',
@@ -306,16 +308,16 @@ export class TransactionSender {
         value: '0',
         nonce: tx.nonce,
         gasLimit: 21000,
-        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas?.mul(2),
-        maxFeePerGas: feeData.maxFeePerGas?.mul(2),
+        maxPriorityFeePerGas: (feeData.maxPriorityFeePerGas || 0n) * 2n,
+        maxFeePerGas: (feeData.maxFeePerGas || 0n) * 2n,
         type: 2,
       });
 
-      this.logger.info(`Sent replacement transaction to cancel ${txHash}: ${cancellationTx.hash}`);
+      logger.info(`Sent replacement transaction to cancel ${txHash}: ${cancellationTx.hash}`);
 
       return cancellationTx.hash;
     } catch (error) {
-      this.logger.error(`Failed to cancel transaction: ${error}`);
+      logger.error(`Failed to cancel transaction: ${error}`);
       throw new Error(`Transaction cancellation failed: ${error}`);
     }
   }
@@ -338,20 +340,16 @@ export class TransactionSender {
         value: tx.value,
         nonce: tx.nonce,
         gasLimit: tx.gasLimit,
-        maxPriorityFeePerGas: BigNumber.from(tx.maxPriorityFeePerGas || 0).mul(
-          Math.floor(gasMultiplier * 100)
-        ).div(100),
-        maxFeePerGas: BigNumber.from(tx.maxFeePerGas || 0).mul(
-          Math.floor(gasMultiplier * 100)
-        ).div(100),
+        maxPriorityFeePerGas: (BigInt(tx.maxPriorityFeePerGas || 0) * BigInt(Math.floor(gasMultiplier * 100))) / 100n,
+        maxFeePerGas: (BigInt(tx.maxFeePerGas || 0) * BigInt(Math.floor(gasMultiplier * 100))) / 100n,
         type: 2,
       });
 
-      this.logger.info(`Sped up transaction ${txHash}: ${speedupTx.hash}`);
+      logger.info(`Sped up transaction ${txHash}: ${speedupTx.hash}`);
 
       return speedupTx.hash;
     } catch (error) {
-      this.logger.error(`Failed to speed up transaction: ${error}`);
+      logger.error(`Failed to speed up transaction: ${error}`);
       throw new Error(`Transaction speedup failed: ${error}`);
     }
   }
@@ -404,7 +402,7 @@ export class TransactionSender {
         avgGasCost,
       };
     } catch (error) {
-      this.logger.error(`Failed to get stats: ${error}`);
+      logger.error(`Failed to get stats: ${error}`);
       return {
         pending: 0,
         confirmed: 0,

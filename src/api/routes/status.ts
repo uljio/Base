@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { Logger } from '../../utils/logger';
+import { logger } from '../../services/utils/Logger';
 
 export interface BotStats {
   isRunning: boolean;
@@ -14,12 +14,11 @@ export interface BotStats {
 }
 
 class StatusController {
-  private logger: Logger;
+  // logger imported from utils
   private stats: BotStats;
 
   constructor() {
-    this.logger = new Logger('StatusController');
-    this.stats = {
+this.stats = {
       isRunning: true,
       uptime: 0,
       opportunitiesFound: 0,
@@ -36,7 +35,7 @@ class StatusController {
    */
   async getStatus(req: Request, res: Response): Promise<void> {
     try {
-      this.logger.info('Fetching bot status');
+      logger.info('Fetching bot status');
 
       const response = {
         success: true,
@@ -49,7 +48,7 @@ class StatusController {
       res.status(200).json(response);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to get status: ${errorMessage}`);
+      logger.error(`Failed to get status: ${errorMessage}`);
       res.status(500).json({
         success: false,
         error: errorMessage,

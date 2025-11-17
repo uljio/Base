@@ -1,6 +1,6 @@
 'use strict';
 
-import { Logger } from '../../utils/Logger';
+import { logger } from '../../services/utils/Logger';
 import { Pool } from '../../database/models/Pool';
 
 /**
@@ -27,8 +27,7 @@ export interface OptimalRoute {
 }
 
 export class RouteOptimizer {
-  private static readonly logger = Logger.getInstance();
-  private readonly chainId: number;
+private readonly chainId: number;
   private readonly maxHops: number = 3;
 
   constructor(chainId: number, maxHops: number = 3) {
@@ -77,7 +76,7 @@ export class RouteOptimizer {
 
       throw new Error(`No route found between ${tokenIn} and ${tokenOut}`);
     } catch (error) {
-      this.logger.error(`Failed to find optimal route: ${error}`);
+      logger.error(`Failed to find optimal route: ${error}`);
       throw new Error(`Route optimization failed: ${error}`);
     }
   }
@@ -141,7 +140,7 @@ export class RouteOptimizer {
         efficiency: Math.max(0, 1 - bestPriceImpact / 100),
       };
     } catch (error) {
-      this.logger.debug(`Direct route not found: ${error}`);
+      logger.debug(`Direct route not found: ${error}`);
       return null;
     }
   }
@@ -209,7 +208,7 @@ export class RouteOptimizer {
 
       return bestRoute;
     } catch (error) {
-      this.logger.debug(`Multi-hop route not found: ${error}`);
+      logger.debug(`Multi-hop route not found: ${error}`);
       return null;
     }
   }
@@ -248,7 +247,7 @@ export class RouteOptimizer {
 
       return intermediate;
     } catch (error) {
-      this.logger.debug(`Failed to get intermediate tokens: ${error}`);
+      logger.debug(`Failed to get intermediate tokens: ${error}`);
       return [];
     }
   }
@@ -262,7 +261,7 @@ export class RouteOptimizer {
       const output = input * price;
       return output.toString();
     } catch (error) {
-      this.logger.error(`Failed to calculate output: ${error}`);
+      logger.error(`Failed to calculate output: ${error}`);
       return '0';
     }
   }
@@ -292,7 +291,7 @@ export class RouteOptimizer {
 
       return Math.max(0, impact);
     } catch (error) {
-      this.logger.error(`Failed to calculate price impact: ${error}`);
+      logger.error(`Failed to calculate price impact: ${error}`);
       return 0;
     }
   }
@@ -334,7 +333,7 @@ export class RouteOptimizer {
 
       return true;
     } catch (error) {
-      this.logger.error(`Failed to validate route: ${error}`);
+      logger.error(`Failed to validate route: ${error}`);
       return false;
     }
   }
@@ -347,7 +346,7 @@ export class RouteOptimizer {
       // For linear routes, execution order is 0, 1, 2, etc.
       return Array.from({ length: route.hops.length }, (_, i) => i);
     } catch (error) {
-      this.logger.error(`Failed to estimate execution order: ${error}`);
+      logger.error(`Failed to estimate execution order: ${error}`);
       return [];
     }
   }

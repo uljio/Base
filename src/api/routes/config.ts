@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { Logger } from '../../utils/logger';
+import { logger } from '../../services/utils/Logger';
 
 export interface BotConfig {
   dryRunMode: boolean;
@@ -13,12 +13,11 @@ export interface BotConfig {
 }
 
 class ConfigController {
-  private logger: Logger;
+  // logger imported from utils
   private config: BotConfig;
 
   constructor() {
-    this.logger = new Logger('ConfigController');
-    this.config = {
+this.config = {
       dryRunMode: true,
       minProfitPercentage: 0.5,
       maxGasPrice: '100000000000', // 100 gwei
@@ -36,7 +35,7 @@ class ConfigController {
    */
   async getConfig(req: Request, res: Response): Promise<void> {
     try {
-      this.logger.info('Fetching bot configuration');
+      logger.info('Fetching bot configuration');
 
       const response = {
         success: true,
@@ -47,7 +46,7 @@ class ConfigController {
       res.status(200).json(response);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to get config: ${errorMessage}`);
+      logger.error(`Failed to get config: ${errorMessage}`);
       res.status(500).json({
         success: false,
         error: errorMessage,
@@ -61,7 +60,7 @@ class ConfigController {
    */
   async updateConfig(req: Request, res: Response): Promise<void> {
     try {
-      this.logger.info('Updating bot configuration');
+      logger.info('Updating bot configuration');
 
       const updates = req.body;
 
@@ -104,7 +103,7 @@ class ConfigController {
 
       this.config = updatedConfig;
 
-      this.logger.info('Configuration updated successfully');
+      logger.info('Configuration updated successfully');
 
       const response = {
         success: true,
@@ -116,7 +115,7 @@ class ConfigController {
       res.status(200).json(response);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to update config: ${errorMessage}`);
+      logger.error(`Failed to update config: ${errorMessage}`);
       res.status(500).json({
         success: false,
         error: errorMessage,
@@ -136,7 +135,7 @@ class ConfigController {
    */
   updateConfiguration(updates: Partial<BotConfig>): void {
     this.config = { ...this.config, ...updates };
-    this.logger.info('Configuration updated programmatically');
+    logger.info('Configuration updated programmatically');
   }
 
   /**
@@ -153,7 +152,7 @@ class ConfigController {
       tokens: [],
       enabled: false,
     };
-    this.logger.info('Configuration reset to defaults');
+    logger.info('Configuration reset to defaults');
   }
 }
 
