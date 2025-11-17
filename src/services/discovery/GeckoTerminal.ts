@@ -132,29 +132,25 @@ export class GeckoTerminal {
   /**
    * Fetch multiple pages with different sorting strategies
    * GeckoTerminal free tier allows max 10 pages
+   * Valid sort params: h24_volume_usd_desc, h24_tx_count_desc
    */
   private async fetchMultiplePages(pageCount: number): Promise<PoolInfo[]> {
     const poolMap = new Map<string, PoolInfo>();
 
-    // Distribute pages across strategies for optimal coverage
-    // For 10 pages: 6 volume + 3 liquidity + 1 tx_count
-    const volumePages = Math.ceil(pageCount * 0.6);      // 60%
-    const liquidityPages = Math.ceil(pageCount * 0.3);   // 30%
-    const txPages = Math.max(1, pageCount - volumePages - liquidityPages); // 10%
+    // GeckoTerminal API only supports 2 sort parameters:
+    // - h24_volume_usd_desc (high volume = good liquidity + activity)
+    // - h24_tx_count_desc (high frequency trading)
+    // For 10 pages: 7 volume + 3 tx_count
+    const volumePages = Math.ceil(pageCount * 0.7);      // 70%
+    const txPages = pageCount - volumePages;              // 30%
 
-    // Strategy 1: High volume pools (most likely to have arbitrage)
+    // Strategy 1: High volume pools (high volume correlates with good liquidity)
     for (let page = 1; page <= volumePages; page++) {
       const pools = await this.fetchPage(page, 'h24_volume_usd_desc');
       pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
     }
 
-    // Strategy 2: High liquidity pools (good for larger trades)
-    for (let page = 1; page <= liquidityPages; page++) {
-      const pools = await this.fetchPage(page, 'liquidity_usd_desc');
-      pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
-    }
-
-    // Strategy 3: High tx count pools (active trading)
+    // Strategy 2: High tx count pools (active trading, potential arbitrage)
     for (let page = 1; page <= txPages; page++) {
       const pools = await this.fetchPage(page, 'h24_tx_count_desc');
       pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
