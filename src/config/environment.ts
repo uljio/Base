@@ -66,7 +66,7 @@ const envSchema = Joi.object({
   MAX_POOLS_TO_MONITOR: Joi.number().min(1).max(1000).default(750),
   POOL_UPDATE_INTERVAL_MINUTES: Joi.number().min(1).default(60),
   POOL_UPDATE_INTERVAL_SECONDS: Joi.number().min(1).default(60),
-  GECKO_PAGES_TO_FETCH: Joi.number().min(1).max(30).default(25),
+  GECKO_PAGES_TO_FETCH: Joi.number().min(1).max(30).default(10),
   ACCEPT_ALL_TOKENS: Joi.boolean().default(true),
 
   // Token Filtering

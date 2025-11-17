@@ -131,33 +131,33 @@ export class GeckoTerminal {
 
   /**
    * Fetch multiple pages with different sorting strategies
+   * GeckoTerminal free tier allows max 10 pages
    */
   private async fetchMultiplePages(pageCount: number): Promise<PoolInfo[]> {
     const poolMap = new Map<string, PoolInfo>();
 
-    // Strategy 1: High volume (pages 1-15)
-    const volumePages = Math.min(15, pageCount);
+    // Distribute pages across strategies for optimal coverage
+    // For 10 pages: 6 volume + 3 liquidity + 1 tx_count
+    const volumePages = Math.ceil(pageCount * 0.6);      // 60%
+    const liquidityPages = Math.ceil(pageCount * 0.3);   // 30%
+    const txPages = Math.max(1, pageCount - volumePages - liquidityPages); // 10%
+
+    // Strategy 1: High volume pools (most likely to have arbitrage)
     for (let page = 1; page <= volumePages; page++) {
       const pools = await this.fetchPage(page, 'h24_volume_usd_desc');
       pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
     }
 
-    // Strategy 2: High liquidity (pages 1-7)
-    const liquidityPages = Math.min(7, Math.max(0, pageCount - volumePages));
-    if (liquidityPages > 0) {
-      for (let page = 1; page <= liquidityPages; page++) {
-        const pools = await this.fetchPage(page, 'liquidity_usd_desc');
-        pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
-      }
+    // Strategy 2: High liquidity pools (good for larger trades)
+    for (let page = 1; page <= liquidityPages; page++) {
+      const pools = await this.fetchPage(page, 'liquidity_usd_desc');
+      pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
     }
 
-    // Strategy 3: High tx count (pages 1-3)
-    const txPages = Math.min(3, Math.max(0, pageCount - volumePages - liquidityPages));
-    if (txPages > 0) {
-      for (let page = 1; page <= txPages; page++) {
-        const pools = await this.fetchPage(page, 'h24_tx_count_desc');
-        pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
-      }
+    // Strategy 3: High tx count pools (active trading)
+    for (let page = 1; page <= txPages; page++) {
+      const pools = await this.fetchPage(page, 'h24_tx_count_desc');
+      pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
     }
 
     return Array.from(poolMap.values());
