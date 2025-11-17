@@ -80,6 +80,11 @@ this.config = { ...DEFAULT_CONFIG, ...config };
    * Setup routes
    */
   private setupRoutes(): void {
+    // Serve static files from public directory
+    const path = require('path');
+    const publicDir = path.join(__dirname, '../../public');
+    this.app.use(express.static(publicDir));
+
     // Health check endpoint
     this.app.get('/health', (req: Request, res: Response) => {
       res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -89,6 +94,11 @@ this.config = { ...DEFAULT_CONFIG, ...config };
     this.app.use('/api/status', statusRouter);
     this.app.use('/api/opportunities', opportunitiesRouter);
     this.app.use('/api/config', configRouter);
+
+    // Serve index.html for root path
+    this.app.get('/', (req: Request, res: Response) => {
+      res.sendFile(path.join(publicDir, 'index.html'));
+    });
 
     // 404 handler
     this.app.use((req: Request, res: Response) => {
