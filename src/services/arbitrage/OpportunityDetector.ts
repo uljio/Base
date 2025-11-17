@@ -1,6 +1,5 @@
 'use strict';
 
-import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../../services/utils/Logger';
 import { Opportunity, OpportunityData } from '../../database/models/Opportunity';
 import { Pool } from '../../database/models/Pool';
