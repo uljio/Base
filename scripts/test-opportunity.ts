@@ -24,7 +24,7 @@ async function main() {
 
     const opportunityDetector = new OpportunityDetector(
       chain.chainId,
-      config.MIN_PROFIT_USD,
+      config.MIN_NET_PROFIT_USD,  // Use new MIN_NET_PROFIT_USD instead of MIN_PROFIT_USD
       0.5, // 0.5% min profit percentage
       60000 // 60 second TTL
     );
@@ -33,7 +33,9 @@ async function main() {
 
     console.log('✅ Services initialized\n');
     console.log(`Chain: ${chain.name} (${chain.chainId})`);
-    console.log(`Min Profit: $${config.MIN_PROFIT_USD}\n`);
+    console.log(`Flashloan Size: $${config.FLASH_LOAN_SIZE_USD}`);
+    console.log(`Min Net Profit: $${config.MIN_NET_PROFIT_USD}`);
+    console.log(`Pages to Fetch: ${config.GECKO_PAGES_TO_FETCH}\n`);
 
     // Discover pools using GeckoTerminal
     console.log('Fetching pools from GeckoTerminal...\n');
