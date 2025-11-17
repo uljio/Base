@@ -224,6 +224,13 @@ export class OpportunityDetector {
       const buyReserveIn = BigInt(buyIsToken0 ? buyPool.reserve0 : buyPool.reserve1);
       const buyReserveOut = BigInt(buyIsToken0 ? buyPool.reserve1 : buyPool.reserve0);
 
+      // Validate reserves aren't suspiciously small (likely bad data)
+      const minReserve = BigInt(1000); // Minimum 1000 wei
+      if (buyReserveIn < minReserve || buyReserveOut < minReserve) {
+        logger.debug(`Buy pool ${buyPool.id} has tiny reserves: ${buyReserveIn}, ${buyReserveOut}`);
+        return null;
+      }
+
       // Calculate output from buy pool
       const amountOut = SwapCalculator.calculateSwapOutput(
         amountIn,
@@ -238,6 +245,12 @@ export class OpportunityDetector {
       const sellIsToken0 = sellPool.token1.toLowerCase() === tokenIn.toLowerCase();
       const sellReserveIn = BigInt(sellIsToken0 ? sellPool.reserve0 : sellPool.reserve1);
       const sellReserveOut = BigInt(sellIsToken0 ? sellPool.reserve1 : sellPool.reserve0);
+
+      // Validate sell pool reserves
+      if (sellReserveIn < minReserve || sellReserveOut < minReserve) {
+        logger.debug(`Sell pool ${sellPool.id} has tiny reserves: ${sellReserveIn}, ${sellReserveOut}`);
+        return null;
+      }
 
       // Calculate final output from sell pool
       const amountFinal = SwapCalculator.calculateSwapOutput(
@@ -259,6 +272,21 @@ export class OpportunityDetector {
 
       // Convert to USD using correct decimals
       const netProfitUsd = Number(netProfit) / decimalMultiplier;
+
+      // Log calculation details for profitable opportunities
+      if (netProfitUsd >= this.minProfitUsd) {
+        logger.info(`💰 Profitable opportunity found:`);
+        logger.info(`   ${tokenIn} → ${tokenOut} → ${tokenIn}`);
+        logger.info(`   Amount in: ${amountIn} (${this.tradeSizeUsd} USD, ${decimals} decimals)`);
+        logger.info(`   Amount after buy: ${amountOut}`);
+        logger.info(`   Amount final: ${amountFinal}`);
+        logger.info(`   Buy pool: ${buyPool.id}`);
+        logger.info(`     Reserve in: ${buyReserveIn}, Reserve out: ${buyReserveOut}`);
+        logger.info(`   Sell pool: ${sellPool.id}`);
+        logger.info(`     Reserve in: ${sellReserveIn}, Reserve out: ${sellReserveOut}`);
+        logger.info(`   Gross profit: ${grossProfit} (${Number(grossProfit) / decimalMultiplier} USD)`);
+        logger.info(`   Net profit: ${netProfit} (${netProfitUsd.toFixed(2)} USD)`);
+      }
 
       if (netProfitUsd < this.minProfitUsd) {
         return null;
