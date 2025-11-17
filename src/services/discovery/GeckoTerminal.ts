@@ -88,41 +88,33 @@ export class GeckoTerminal {
     try {
       logger.info('Discovering pools from GeckoTerminal...');
 
-      await this.rateLimiter.acquire();
+      // Fetch multiple pages with different sort strategies
+      const allPools = await this.fetchMultiplePages(this.config.GECKO_PAGES_TO_FETCH);
 
-      const pools = await withRetry(
-        async () => {
-          const response = await this.client.get<GeckoResponse>(
-            '/networks/base/pools',
-            {
-              params: {
-                sort: 'h24_volume_usd_desc',
-                page: 1,
-              },
-            }
-          );
-
-          return this.parsePools(response.data);
-        },
-        {
-          maxAttempts: 3,
-          delayMs: 2000,
-        },
-        'GeckoTerminal API request'
-      );
+      logger.info(`Fetched ${allPools.length} pools from ${this.config.GECKO_PAGES_TO_FETCH} pages`);
 
       // Filter pools based on configuration
-      const filteredPools = pools.filter(
+      const filteredPools = allPools.filter(
         (pool) => pool.liquidityUSD >= this.config.MIN_LIQUIDITY_USD
       );
 
-      // Sort by volume and take top N
-      const topPools = filteredPools
-        .sort((a, b) => b.volume24hUSD - a.volume24hUSD)
-        .slice(0, this.config.MAX_POOLS_TO_MONITOR);
+      // Build token connectivity map
+      const tokenConnectivity = this.buildTokenConnectivity(filteredPools);
+
+      // Score pools
+      const scoredPools = filteredPools.map(pool => ({
+        pool,
+        score: this.scorePool(pool, tokenConnectivity)
+      }));
+
+      // Sort by score and take top N
+      const topPools = scoredPools
+        .sort((a, b) => b.score - a.score)
+        .slice(0, this.config.MAX_POOLS_TO_MONITOR)
+        .map(sp => sp.pool);
 
       logger.info('Pools discovered', {
-        total: pools.length,
+        total: allPools.length,
         filtered: filteredPools.length,
         selected: topPools.length,
       });
@@ -135,6 +127,137 @@ export class GeckoTerminal {
       logServiceError('GeckoTerminal', error as Error);
       throw error;
     }
+  }
+
+  /**
+   * Fetch multiple pages with different sorting strategies
+   */
+  private async fetchMultiplePages(pageCount: number): Promise<PoolInfo[]> {
+    const poolMap = new Map<string, PoolInfo>();
+
+    // Strategy 1: High volume (pages 1-15)
+    const volumePages = Math.min(15, pageCount);
+    for (let page = 1; page <= volumePages; page++) {
+      const pools = await this.fetchPage(page, 'h24_volume_usd_desc');
+      pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
+    }
+
+    // Strategy 2: High liquidity (pages 1-7)
+    const liquidityPages = Math.min(7, Math.max(0, pageCount - volumePages));
+    if (liquidityPages > 0) {
+      for (let page = 1; page <= liquidityPages; page++) {
+        const pools = await this.fetchPage(page, 'liquidity_usd_desc');
+        pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
+      }
+    }
+
+    // Strategy 3: High tx count (pages 1-3)
+    const txPages = Math.min(3, Math.max(0, pageCount - volumePages - liquidityPages));
+    if (txPages > 0) {
+      for (let page = 1; page <= txPages; page++) {
+        const pools = await this.fetchPage(page, 'h24_tx_count_desc');
+        pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
+      }
+    }
+
+    return Array.from(poolMap.values());
+  }
+
+  /**
+   * Fetch a single page with specified sorting
+   */
+  private async fetchPage(page: number, sort: string): Promise<PoolInfo[]> {
+    try {
+      await this.rateLimiter.acquire();
+
+      const pools = await withRetry(
+        async () => {
+          const response = await this.client.get<GeckoResponse>(
+            '/networks/base/pools',
+            {
+              params: { sort, page },
+            }
+          );
+
+          return this.parsePools(response.data);
+        },
+        {
+          maxAttempts: 3,
+          delayMs: 2000,
+        },
+        `GeckoTerminal API request (page ${page}, sort ${sort})`
+      );
+
+      logger.debug(`Fetched page ${page} with sort=${sort}`, {
+        count: pools.length
+      });
+
+      return pools;
+    } catch (error) {
+      logger.warn(`Failed to fetch page ${page}: ${error}`);
+      return [];
+    }
+  }
+
+  /**
+   * Build token connectivity map (how many pools each token appears in)
+   */
+  private buildTokenConnectivity(pools: PoolInfo[]): Map<string, number> {
+    const connectivity = new Map<string, number>();
+
+    pools.forEach(pool => {
+      const token0 = pool.token0.address.toLowerCase();
+      const token1 = pool.token1.address.toLowerCase();
+
+      connectivity.set(token0, (connectivity.get(token0) || 0) + 1);
+      connectivity.set(token1, (connectivity.get(token1) || 0) + 1);
+    });
+
+    return connectivity;
+  }
+
+  /**
+   * Score pool based on multiple factors
+   */
+  private scorePool(
+    pool: PoolInfo,
+    tokenConnectivity: Map<string, number>
+  ): number {
+    const BASE_TOKENS = [
+      '0x4200000000000000000000000000000000000006', // WETH
+      '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // USDC
+      '0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf', // cbBTC
+    ];
+
+    let score = 0;
+
+    // 1. Liquidity score (30 points)
+    if (pool.liquidityUSD >= 500000) score += 30;
+    else if (pool.liquidityUSD >= 100000) score += 25;
+    else if (pool.liquidityUSD >= 50000) score += 20;
+    else if (pool.liquidityUSD >= 25000) score += 15;
+
+    // 2. Volume/Liquidity ratio (20 points)
+    const ratio = pool.volume24hUSD / Math.max(pool.liquidityUSD, 1);
+    if (ratio >= 0.5) score += 20;
+    else if (ratio >= 0.1) score += 15;
+    else if (ratio >= 0.05) score += 10;
+    else score += 5;
+
+    // 3. Token connectivity (30 points)
+    const token0Conn = tokenConnectivity.get(pool.token0.address.toLowerCase()) || 0;
+    const token1Conn = tokenConnectivity.get(pool.token1.address.toLowerCase()) || 0;
+    const avgConn = (token0Conn + token1Conn) / 2;
+    score += Math.min(30, avgConn * 3);
+
+    // 4. Base token bonus (20 points)
+    const hasBaseToken = BASE_TOKENS.some(
+      base => base.toLowerCase() === pool.token0.address.toLowerCase() ||
+              base.toLowerCase() === pool.token1.address.toLowerCase()
+    );
+    if (hasBaseToken) score += 20;
+
+    return score;
   }
 
   /**

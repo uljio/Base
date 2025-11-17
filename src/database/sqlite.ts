@@ -13,7 +13,7 @@ class SQLiteDatabase {
   private db: Database.Database | null = null;
   private readonly dbPath: string;
   // logger imported from utils
-  private maxConnections: number = 5;
+  private maxConnections: number = 15;
   private activeConnections: number = 0;
 
   private constructor(dbPath: string = path.join(process.cwd(), 'data', 'arbitrage.db')) {
@@ -108,7 +108,9 @@ class SQLiteDatabase {
           fee INTEGER NOT NULL,
           liquidity TEXT NOT NULL,
           price REAL NOT NULL,
-          last_updated INTEGER NOT NULL
+          last_updated INTEGER NOT NULL,
+          last_reserve_update INTEGER,
+          price_impact_50usd REAL
         );
 
         CREATE INDEX IF NOT EXISTS idx_opportunities_status ON opportunities(status);

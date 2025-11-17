@@ -18,6 +18,8 @@ export interface PoolData {
   liquidity: string;
   price: number;
   last_updated?: number;
+  last_reserve_update?: number;
+  price_impact_50usd?: number;
 }
 
 export class Pool {
@@ -38,7 +40,8 @@ private static readonly TABLE = 'pools';
         // Update existing pool
         const stmt = sqlite.prepare(`
           UPDATE ${this.TABLE}
-          SET reserve0 = ?, reserve1 = ?, liquidity = ?, price = ?, last_updated = ?
+          SET reserve0 = ?, reserve1 = ?, liquidity = ?, price = ?, last_updated = ?,
+              last_reserve_update = ?, price_impact_50usd = ?
           WHERE id = ?
         `);
 
@@ -48,6 +51,8 @@ private static readonly TABLE = 'pools';
           data.liquidity,
           data.price,
           now,
+          (data as any).last_reserve_update || null,
+          (data as any).price_impact_50usd || null,
           id
         );
 
@@ -56,8 +61,9 @@ private static readonly TABLE = 'pools';
         // Create new pool
         const stmt = sqlite.prepare(`
           INSERT INTO ${this.TABLE} (
-            id, chain_id, token0, token1, reserve0, reserve1, fee, liquidity, price, last_updated
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            id, chain_id, token0, token1, reserve0, reserve1, fee, liquidity, price, last_updated,
+            last_reserve_update, price_impact_50usd
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         stmt.run(
@@ -70,7 +76,9 @@ private static readonly TABLE = 'pools';
           data.fee,
           data.liquidity,
           data.price,
-          now
+          now,
+          (data as any).last_reserve_update || null,
+          (data as any).price_impact_50usd || null
         );
 
         logger.info(`Created pool ${id}`);

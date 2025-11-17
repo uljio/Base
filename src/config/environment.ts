@@ -62,19 +62,37 @@ const envSchema = Joi.object({
     .default('base-mainnet'),
 
   // Pool Discovery
-  MIN_LIQUIDITY_USD: Joi.number().min(0).default(50000),
-  MAX_POOLS_TO_MONITOR: Joi.number().min(1).max(500).default(50),
+  MIN_LIQUIDITY_USD: Joi.number().min(0).default(25000),
+  MAX_POOLS_TO_MONITOR: Joi.number().min(1).max(1000).default(750),
   POOL_UPDATE_INTERVAL_MINUTES: Joi.number().min(1).default(60),
+  POOL_UPDATE_INTERVAL_SECONDS: Joi.number().min(1).default(60),
+  GECKO_PAGES_TO_FETCH: Joi.number().min(1).max(30).default(25),
   ACCEPT_ALL_TOKENS: Joi.boolean().default(true),
+
+  // Token Filtering
+  MIN_TOKEN_POOL_COUNT: Joi.number().min(1).default(2),
+  PRIORITIZE_BASE_TOKENS: Joi.boolean().default(true),
 
   // Monitoring
   PRICE_FRESHNESS_SECONDS: Joi.number().min(1).default(5),
   BLOCK_PROCESSING_TIMEOUT_MS: Joi.number().min(100).default(1000),
 
-  // Flash Loan
+  // Flash Loan Configuration
+  FLASH_LOAN_SIZE_USD: Joi.number().min(1).default(50),
+  MIN_NET_PROFIT_USD: Joi.number().min(0).default(1.00),
   AAVE_POOL_ADDRESS_PROVIDER: Joi.string()
     .pattern(/^0x[0-9a-fA-F]{40}$/)
     .default('0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D'), // Base mainnet
+
+  // Profit Calculation
+  DEX_FEE_PERCENTAGE: Joi.number().min(0).max(100).default(0.3),
+  FLASHLOAN_FEE_PERCENTAGE: Joi.number().min(0).max(100).default(0.09),
+  ESTIMATED_GAS_COST_USD: Joi.number().min(0).default(0.30),
+
+  // Arbitrage Path Configuration
+  MAX_HOPS_STANDARD: Joi.number().min(1).max(10).default(2),
+  MAX_HOPS_HIGH_PROFIT: Joi.number().min(1).max(10).default(4),
+  HIGH_PROFIT_THRESHOLD_USD: Joi.number().min(0).default(5.00),
 })
   .unknown(true);
 
@@ -115,14 +133,32 @@ export interface EnvironmentConfig {
   MIN_LIQUIDITY_USD: number;
   MAX_POOLS_TO_MONITOR: number;
   POOL_UPDATE_INTERVAL_MINUTES: number;
+  POOL_UPDATE_INTERVAL_SECONDS: number;
+  GECKO_PAGES_TO_FETCH: number;
   ACCEPT_ALL_TOKENS: boolean;
+
+  // Token Filtering
+  MIN_TOKEN_POOL_COUNT: number;
+  PRIORITIZE_BASE_TOKENS: boolean;
 
   // Monitoring
   PRICE_FRESHNESS_SECONDS: number;
   BLOCK_PROCESSING_TIMEOUT_MS: number;
 
-  // Flash Loan
+  // Flash Loan Configuration
+  FLASH_LOAN_SIZE_USD: number;
+  MIN_NET_PROFIT_USD: number;
   AAVE_POOL_ADDRESS_PROVIDER: string;
+
+  // Profit Calculation
+  DEX_FEE_PERCENTAGE: number;
+  FLASHLOAN_FEE_PERCENTAGE: number;
+  ESTIMATED_GAS_COST_USD: number;
+
+  // Arbitrage Path Configuration
+  MAX_HOPS_STANDARD: number;
+  MAX_HOPS_HIGH_PROFIT: number;
+  HIGH_PROFIT_THRESHOLD_USD: number;
 }
 
 /**
