@@ -65,6 +65,7 @@ const envSchema = Joi.object({
   MIN_LIQUIDITY_USD: Joi.number().min(0).default(50000),
   MAX_POOLS_TO_MONITOR: Joi.number().min(1).max(500).default(50),
   POOL_UPDATE_INTERVAL_MINUTES: Joi.number().min(1).default(60),
+  ACCEPT_ALL_TOKENS: Joi.boolean().default(true),
 
   // Monitoring
   PRICE_FRESHNESS_SECONDS: Joi.number().min(1).default(5),
@@ -114,6 +115,7 @@ export interface EnvironmentConfig {
   MIN_LIQUIDITY_USD: number;
   MAX_POOLS_TO_MONITOR: number;
   POOL_UPDATE_INTERVAL_MINUTES: number;
+  ACCEPT_ALL_TOKENS: boolean;
 
   // Monitoring
   PRICE_FRESHNESS_SECONDS: number;
