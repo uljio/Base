@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbitrage Bot Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Arbitrage Bot Dashboard</h1>
+            <p class="subtitle">Record and track arbitrage opportunities on Base chain</p>
+        </header>
+
+        <!-- Stats Section -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalOpps">0</div>
+                <div class="stat-label">Total Opportunities</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="pendingOpps">0</div>
+                <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="executedOpps">0</div>
+                <div class="stat-label">Executed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgProfit">$0.00</div>
+                <div class="stat-label">Average Profit</div>
+            </div>
+        </div>
+
+        <!-- Controls Section -->
+        <div class="controls">
+            <button class="btn btn-primary" id="newOppBtn">+ New Opportunity</button>
+            <button class="btn btn-secondary" id="refreshBtn">Refresh</button>
+            <button class="btn btn-success" id="exportCSVBtn">Export CSV</button>
+
+            <div class="filters">
+                <select id="statusFilter" class="filter-select">
+                    <option value="">All Statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="executing">Executing</option>
+                    <option value="executed">Executed</option>
+                    <option value="failed">Failed</option>
+                    <option value="expired">Expired</option>
+                </select>
+
+                <input type="number" id="minProfitFilter" placeholder="Min Profit ($)" class="filter-input">
+
+                <button class="btn btn-sm" id="applyFilters">Apply Filters</button>
+                <button class="btn btn-sm btn-outline" id="clearFilters">Clear</button>
+            </div>
+        </div>
+
+        <!-- Opportunities Table -->
+        <div class="table-container">
+            <table class="opportunities-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Token In</th>
+                        <th>Token Out</th>
+                        <th>Amount In</th>
+                        <th>Profit USD</th>
+                        <th>Profit %</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="opportunitiesTableBody">
+                    <tr>
+                        <td colspan="9" class="no-data">Loading opportunities...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- New Opportunity Modal -->
+        <div id="oppModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Create New Opportunity</h2>
+                    <span class="close">&times;</span>
+                </div>
+                <form id="oppForm">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="chainId">Chain ID</label>
+                            <input type="number" id="chainId" name="chain_id" value="8453" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="status">Status</label>
+                            <select id="status" name="status">
+                                <option value="pending">Pending</option>
+                                <option value="executing">Executing</option>
+                                <option value="executed">Executed</option>
+                                <option value="failed">Failed</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="tokenIn">Token In (Address)</label>
+                            <input type="text" id="tokenIn" name="token_in" placeholder="0x..." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="tokenOut">Token Out (Address)</label>
+                            <input type="text" id="tokenOut" name="token_out" placeholder="0x..." required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="amountIn">Amount In</label>
+                            <input type="text" id="amountIn" name="amount_in" placeholder="1000000000000000000" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="amountOut">Amount Out (Predicted)</label>
+                            <input type="text" id="amountOut" name="amount_out_predicted" placeholder="1100000000000000000">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="profitUsd">Profit USD</label>
+                            <input type="number" step="0.01" id="profitUsd" name="profit_usd" placeholder="10.50">
+                        </div>
+                        <div class="form-group">
+                            <label for="profitPercentage">Profit Percentage</label>
+                            <input type="number" step="0.01" id="profitPercentage" name="profit_percentage" placeholder="1.5">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="route">Route (JSON)</label>
+                        <textarea id="route" name="route" rows="3" placeholder='[{"dex": "uniswap", "pool": "0x..."}]'></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="expiresIn">Expires In (seconds)</label>
+                        <input type="number" id="expiresIn" name="expires_in" value="60" placeholder="60">
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline" id="cancelBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Opportunity</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Detail Modal -->
+        <div id="detailModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Opportunity Details</h2>
+                    <span class="close" id="closeDetail">&times;</span>
+                </div>
+                <div id="detailContent" class="detail-content">
+                    <!-- Details will be populated here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" id="closeDetailBtn">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

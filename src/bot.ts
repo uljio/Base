@@ -5,6 +5,7 @@ import { statusController } from './api/routes/status';
 import { opportunitiesController } from './api/routes/opportunities';
 import { configController } from './api/routes/config';
 import { logger } from './services/utils/Logger';
+import sqlite from './database/sqlite';
 
 export interface BotOptions {
   rpcUrl: string;
@@ -74,6 +75,10 @@ this.options = options;
       logger.info('Starting ArbitrageBot...');
       this.startTime = Date.now();
       this.isRunning = true;
+
+      // Initialize database
+      logger.info('Initializing database...');
+      await sqlite.initialize();
 
       // Update status
       statusController.setRunning(true);
