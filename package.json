@@ -13,6 +13,7 @@
     "deploy": "ts-node scripts/deploy-contract.ts",
     "discover": "ts-node scripts/discover-pools.ts",
     "simulate": "ts-node scripts/simulate-trade.ts",
+    "test:opportunity": "ts-node scripts/test-opportunity.ts",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "clean": "rm -rf dist"

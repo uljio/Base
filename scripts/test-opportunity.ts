@@ -3,11 +3,11 @@
  */
 
 import { getAlchemyProvider } from '../src/services/rpc/AlchemyProvider';
-import { PriceMonitor } from '../src/services/monitoring/PriceMonitor';
 import { OpportunityDetector } from '../src/services/arbitrage/OpportunityDetector';
-import { ProfitCalculator } from '../src/services/arbitrage/ProfitCalculator';
-import { WETH, USDC } from '../src/config/tokens';
-import { parseUnits } from 'ethers';
+import { getCurrentChain } from '../src/config/chains';
+import { getConfig } from '../src/config/environment';
+import { WETH, USDC, DAI } from '../src/config/tokens';
+import { Pool } from '../src/database/models/Pool';
 
 async function main() {
   console.log('🧪 Testing arbitrage opportunity detection...\n');
@@ -17,71 +17,74 @@ async function main() {
     const provider = getAlchemyProvider();
     await provider.connect();
 
-    const priceMonitor = new PriceMonitor();
-    const profitCalculator = new ProfitCalculator();
-    const opportunityDetector = new OpportunityDetector(priceMonitor, profitCalculator);
+    const chain = getCurrentChain();
+    const config = getConfig();
+
+    const opportunityDetector = new OpportunityDetector(
+      chain.chainId,
+      config.MIN_PROFIT_USD,
+      0.5, // 0.5% min profit percentage
+      60000 // 60 second TTL
+    );
 
     console.log('✅ Services initialized\n');
+    console.log(`Chain: ${chain.name} (${chain.chainId})`);
+    console.log(`Min Profit: $${config.MIN_PROFIT_USD}\n`);
 
-    // Simulate price updates
-    console.log('Simulating price discrepancy between DEXs...\n');
+    // Fetch some pools from database to test with
+    console.log('Fetching active pools from database...\n');
 
-    // DEX 1: WETH/USDC at 2000 USDC per WETH
-    priceMonitor.updatePrice({
-      poolAddress: '0x1234...', // dummy
-      dex: 'Uniswap V3',
-      token0: WETH.address,
-      token1: USDC.address,
-      amount0: parseUnits('1', 18), // 1 WETH
-      amount1: parseUnits('2000', 6), // 2000 USDC
-      price: parseUnits('2000', 6), // 2000 USDC per WETH
-      blockNumber: 12345,
-      txHash: '0xabc...',
-      timestamp: Date.now(),
-    });
+    const pools = Pool.findByStatus('active', 10);
 
-    // DEX 2: WETH/USDC at 2020 USDC per WETH (1% higher)
-    priceMonitor.updatePrice({
-      poolAddress: '0x5678...',
-      dex: 'Aerodrome',
-      token0: WETH.address,
-      token1: USDC.address,
-      amount0: parseUnits('1', 18),
-      amount1: parseUnits('2020', 6),
-      price: parseUnits('2020', 6),
-      blockNumber: 12345,
-      txHash: '0xdef...',
-      timestamp: Date.now(),
-    });
-
-    console.log('Price data:');
-    console.log('- Uniswap V3: 2000 USDC/WETH');
-    console.log('- Aerodrome:  2020 USDC/WETH');
-    console.log('- Spread:     1%\n');
-
-    // Get price spread
-    const spread = priceMonitor.getPriceSpread(WETH.address, USDC.address);
-
-    if (spread) {
-      console.log(`📊 Price Spread Detected:`);
-      console.log(`   Buy on:  ${spread.lowDex}`);
-      console.log(`   Sell on: ${spread.highDex}`);
-      console.log(`   Spread:  ${spread.spreadPercent.toFixed(2)}%\n`);
+    if (pools.length === 0) {
+      console.log('⚠️  No active pools found in database.');
+      console.log('   Run "npm run discover" first to populate pools.\n');
+      await provider.disconnect();
+      return;
     }
 
-    // Simulate opportunity detection
-    console.log('Running opportunity detector...\n');
+    console.log(`Found ${pools.length} active pools\n`);
 
-    // Start detector
-    await opportunityDetector.start();
+    // Create a mock price map from pool data
+    const poolPrices = new Map<string, number>();
 
-    // Wait a moment for detection
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    pools.forEach((pool) => {
+      // Create synthetic price from liquidity/volume ratio
+      const price = pool.volume24hUSD / Math.max(pool.liquidityUSD, 1);
+      poolPrices.set(pool.address, price);
+    });
+
+    // Get unique tokens from pools
+    const tokens = Array.from(
+      new Set(pools.flatMap((p) => [p.token0Address, p.token1Address]))
+    );
+
+    console.log(`Scanning ${tokens.length} unique tokens...\n`);
+
+    // Scan for opportunities
+    const opportunities = await opportunityDetector.scanOpportunities(
+      tokens,
+      poolPrices
+    );
+
+    console.log(`\n📊 Results:`);
+    console.log(`   Found ${opportunities.length} potential opportunities\n`);
+
+    if (opportunities.length > 0) {
+      console.log('Top Opportunities:\n');
+      opportunities.slice(0, 5).forEach((opp, i) => {
+        console.log(`${i + 1}. ${opp.tokenIn} → ${opp.tokenOut}`);
+        console.log(`   Profit: $${opp.profitUsd.toFixed(2)} (${opp.profitPercentage.toFixed(2)}%)`);
+        console.log(`   Confidence: ${(opp.confidence * 100).toFixed(0)}%`);
+        console.log(`   Route: ${opp.route.path.join(' → ')}\n`);
+      });
+    } else {
+      console.log('⚠️  No profitable opportunities detected.');
+      console.log('   This is normal - arbitrage opportunities are rare and fleeting.\n');
+    }
 
     console.log('✅ Test complete!\n');
-    console.log('Note: Check logs for detected opportunities');
 
-    await opportunityDetector.stop();
     await provider.disconnect();
   } catch (error) {
     console.error('❌ Error:', error);
