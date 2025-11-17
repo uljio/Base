@@ -9,6 +9,9 @@ import { getConfig } from '../src/config/environment';
 import { PoolInfo } from '../src/types/dex.types';
 import sqlite from '../src/database/sqlite';
 import { Pool } from '../src/database/models/Pool';
+import { ReserveFetcher } from '../src/services/blockchain/ReserveFetcher';
+import { TokenInfo } from '../src/services/blockchain/TokenInfo';
+import { ethers } from 'ethers';
 
 async function main() {
   console.log('🧪 Testing arbitrage opportunity detection...\n');
@@ -24,7 +27,7 @@ async function main() {
 
     const opportunityDetector = new OpportunityDetector(
       chain.chainId,
-      config.MIN_PROFIT_USD,
+      config.MIN_NET_PROFIT_USD,  // Use new MIN_NET_PROFIT_USD instead of MIN_PROFIT_USD
       0.5, // 0.5% min profit percentage
       60000 // 60 second TTL
     );
@@ -33,7 +36,9 @@ async function main() {
 
     console.log('✅ Services initialized\n');
     console.log(`Chain: ${chain.name} (${chain.chainId})`);
-    console.log(`Min Profit: $${config.MIN_PROFIT_USD}\n`);
+    console.log(`Flashloan Size: $${config.FLASH_LOAN_SIZE_USD}`);
+    console.log(`Min Net Profit: $${config.MIN_NET_PROFIT_USD}`);
+    console.log(`Pages to Fetch: ${config.GECKO_PAGES_TO_FETCH}\n`);
 
     // Discover pools using GeckoTerminal
     console.log('Fetching pools from GeckoTerminal...\n');
@@ -48,41 +53,83 @@ async function main() {
 
     console.log(`Found ${pools.length} pools\n`);
 
-    // Save pools to database for OpportunityDetector to use
-    console.log('Saving pools to database...\n');
-    for (const pool of pools) {
-      await Pool.upsert({
-        chain_id: chain.chainId,
-        token0: pool.token0.address,
-        token1: pool.token1.address,
-        reserve0: '0', // We don't have reserve data from GeckoTerminal
-        reserve1: '0',
-        fee: pool.fee,
-        liquidity: pool.liquidityUSD.toString(),
-        price: 0, // Will be calculated from reserves if needed
-      });
-    }
+    // Initialize blockchain provider and services
+    console.log('Initializing blockchain provider...\n');
+    const alchemyUrl = `https://base-mainnet.g.alchemy.com/v2/${config.ALCHEMY_API_KEY}`;
+    const provider = new ethers.JsonRpcProvider(alchemyUrl);
+    const reserveFetcher = new ReserveFetcher(provider);
+    const tokenInfo = new TokenInfo(provider);
 
-    // Create a price map from pool data
-    const poolPrices = new Map<string, number>();
+    // Fetch reserves from blockchain
+    console.log('Fetching reserves from blockchain...\n');
+    const poolAddresses = pools.map(p => p.address);
+    const reservesMap = await reserveFetcher.batchFetchReserves(poolAddresses);
 
-    pools.forEach((pool: PoolInfo) => {
-      // Use volume to liquidity ratio as a proxy for price volatility
-      const price = pool.volume24hUSD / Math.max(pool.liquidityUSD, 1);
-      poolPrices.set(pool.address, price);
-    });
+    console.log(`Successfully fetched reserves for ${reservesMap.size}/${pools.length} pools\n`);
 
-    // Get unique token addresses from pools
-    const tokens = Array.from(
+    // Fetch token decimals
+    console.log('Fetching token decimals...\n');
+    const allTokens = Array.from(
       new Set(pools.flatMap((p: PoolInfo) => [p.token0.address, p.token1.address]))
     ) as string[];
+    const tokenDecimalsMap = await tokenInfo.batchGetDecimals(allTokens);
 
-    console.log(`Scanning ${tokens.length} unique tokens...\n`);
+    console.log(`Fetched decimals for ${tokenDecimalsMap.size} tokens\n`);
+
+    // Save pools to database with real reserve data
+    console.log('Saving pools to database...\n');
+    let savedCount = 0;
+    for (const pool of pools) {
+      const reserves = reservesMap.get(pool.address.toLowerCase());
+
+      if (reserves) {
+        // Calculate price from reserves
+        const price = Pool.calculatePrice(reserves.reserve0, reserves.reserve1);
+
+        await Pool.upsert({
+          chain_id: chain.chainId,
+          token0: pool.token0.address,
+          token1: pool.token1.address,
+          reserve0: reserves.reserve0,
+          reserve1: reserves.reserve1,
+          fee: pool.fee,
+          liquidity: pool.liquidityUSD.toString(),
+          price: price,
+        });
+        savedCount++;
+      } else {
+        // Skip pools without reserves - they may be invalid or use different interfaces
+        console.log(`⚠️  Skipping pool ${pool.address} - no reserves fetched`);
+      }
+    }
+
+    console.log(`Saved ${savedCount} pools with valid reserves\n`);
+
+    // Create a price map from pools with valid reserves
+    const poolPrices = new Map<string, number>();
+    const validPools: PoolInfo[] = [];
+
+    pools.forEach((pool: PoolInfo) => {
+      const reserves = reservesMap.get(pool.address.toLowerCase());
+      if (reserves) {
+        const price = Pool.calculatePrice(reserves.reserve0, reserves.reserve1);
+        poolPrices.set(pool.address, price);
+        validPools.push(pool);
+      }
+    });
+
+    // Get unique token addresses from pools with valid reserves
+    const tokens = Array.from(
+      new Set(validPools.flatMap((p: PoolInfo) => [p.token0.address, p.token1.address]))
+    ) as string[];
+
+    console.log(`Scanning ${tokens.length} unique tokens from ${validPools.length} valid pools...\n`);
 
     // Scan for opportunities
     const opportunities = await opportunityDetector.scanOpportunities(
       tokens,
-      poolPrices
+      poolPrices,
+      tokenDecimalsMap
     );
 
     console.log(`\n📊 Results:`);

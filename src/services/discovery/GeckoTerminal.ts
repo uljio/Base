@@ -131,33 +131,29 @@ export class GeckoTerminal {
 
   /**
    * Fetch multiple pages with different sorting strategies
+   * GeckoTerminal free tier allows max 10 pages
+   * Valid sort params: h24_volume_usd_desc, h24_tx_count_desc
    */
   private async fetchMultiplePages(pageCount: number): Promise<PoolInfo[]> {
     const poolMap = new Map<string, PoolInfo>();
 
-    // Strategy 1: High volume (pages 1-15)
-    const volumePages = Math.min(15, pageCount);
+    // GeckoTerminal API only supports 2 sort parameters:
+    // - h24_volume_usd_desc (high volume = good liquidity + activity)
+    // - h24_tx_count_desc (high frequency trading)
+    // For 10 pages: 7 volume + 3 tx_count
+    const volumePages = Math.ceil(pageCount * 0.7);      // 70%
+    const txPages = pageCount - volumePages;              // 30%
+
+    // Strategy 1: High volume pools (high volume correlates with good liquidity)
     for (let page = 1; page <= volumePages; page++) {
       const pools = await this.fetchPage(page, 'h24_volume_usd_desc');
       pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
     }
 
-    // Strategy 2: High liquidity (pages 1-7)
-    const liquidityPages = Math.min(7, Math.max(0, pageCount - volumePages));
-    if (liquidityPages > 0) {
-      for (let page = 1; page <= liquidityPages; page++) {
-        const pools = await this.fetchPage(page, 'liquidity_usd_desc');
-        pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
-      }
-    }
-
-    // Strategy 3: High tx count (pages 1-3)
-    const txPages = Math.min(3, Math.max(0, pageCount - volumePages - liquidityPages));
-    if (txPages > 0) {
-      for (let page = 1; page <= txPages; page++) {
-        const pools = await this.fetchPage(page, 'h24_tx_count_desc');
-        pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
-      }
+    // Strategy 2: High tx count pools (active trading, potential arbitrage)
+    for (let page = 1; page <= txPages; page++) {
+      const pools = await this.fetchPage(page, 'h24_tx_count_desc');
+      pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
     }
 
     return Array.from(poolMap.values());
