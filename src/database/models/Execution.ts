@@ -1,6 +1,6 @@
 'use strict';
 
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import sqlite from '../sqlite';
 import { logger } from '../../services/utils/Logger';
 
@@ -30,7 +30,7 @@ private static readonly TABLE = 'executions';
    */
   public static async create(data: Omit<ExecutionData, 'id' | 'created_at' | 'updated_at'>): Promise<ExecutionData> {
     try {
-      const id = uuidv4();
+      const id = randomUUID();
       const now = Date.now();
       const status = data.status || 'pending';
 

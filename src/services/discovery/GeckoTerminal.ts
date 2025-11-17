@@ -3,7 +3,7 @@
  */
 
 import axios, { AxiosInstance } from 'axios';
-import { PoolInfo, DexType } from '../../types/dex.types';
+import { PoolInfo, DexType, TokenInfo } from '../../types/dex.types';
 import { getTokenByAddress } from '../../config/tokens';
 import { getDexConfig } from '../../config/dexes';
 import { getConfig } from '../../config/environment';
@@ -210,11 +210,36 @@ export class GeckoTerminal {
       return null;
     }
 
-    const token0 = getTokenByAddress(token0Address);
-    const token1 = getTokenByAddress(token1Address);
+    // Try to get token from whitelist first
+    let token0 = getTokenByAddress(token0Address);
+    let token1 = getTokenByAddress(token1Address);
 
+    // If ACCEPT_ALL_TOKENS is enabled, create tokens dynamically from API data when not in whitelist
+    if (this.config.ACCEPT_ALL_TOKENS) {
+      if (!token0) {
+        token0 = this.createTokenInfo(
+          token0Address,
+          pool.relationships.base_token,
+          included
+        );
+      }
+
+      if (!token1) {
+        token1 = this.createTokenInfo(
+          token1Address,
+          pool.relationships.quote_token,
+          included
+        );
+      }
+    }
+
+    // Skip pool if tokens not found
     if (!token0 || !token1) {
-      logger.debug('Unknown tokens in pool', { token0Address, token1Address });
+      if (this.config.ACCEPT_ALL_TOKENS) {
+        logger.debug('Could not create token info for pool', { token0Address, token1Address });
+      } else {
+        logger.debug('Skipping pool with non-whitelisted tokens', { token0Address, token1Address });
+      }
       return null;
     }
 
@@ -234,6 +259,50 @@ export class GeckoTerminal {
       volume24hUSD,
       lastUpdate: Date.now(),
     };
+  }
+
+  /**
+   * Create TokenInfo from GeckoTerminal API data
+   */
+  private createTokenInfo(
+    address: string,
+    tokenRef: any,
+    included?: any[]
+  ): TokenInfo | undefined {
+    try {
+      // Try to find token details in included data
+      const tokenId = tokenRef?.data?.id;
+      let tokenData = null;
+
+      if (included && tokenId) {
+        tokenData = included.find(
+          (item) => item.type === 'token' && item.id === tokenId
+        );
+      }
+
+      // Extract token info
+      const symbol = tokenData?.attributes?.symbol || this.extractSymbolFromAddress(address);
+      const name = tokenData?.attributes?.name || symbol;
+      const decimals = tokenData?.attributes?.decimals || 18; // Default to 18 if unknown
+
+      return {
+        address: address.toLowerCase(),
+        symbol,
+        name,
+        decimals,
+      };
+    } catch (error) {
+      logger.debug('Failed to create token info', { address, error });
+      return undefined;
+    }
+  }
+
+  /**
+   * Extract a simple symbol from token address when no metadata available
+   */
+  private extractSymbolFromAddress(address: string): string {
+    // Return shortened address as symbol fallback
+    return `TOKEN_${address.substring(2, 8).toUpperCase()}`;
   }
 
   /**

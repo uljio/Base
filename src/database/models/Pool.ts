@@ -1,6 +1,5 @@
 'use strict';
 
-import { v4 as uuidv4 } from 'uuid';
 import sqlite from '../sqlite';
 import { logger } from '../../services/utils/Logger';
 
