@@ -17,8 +17,19 @@ const envSchema = Joi.object({
 
   // Wallet
   PRIVATE_KEY: Joi.string()
-    .pattern(/^(0x)?[0-9a-fA-F]{64}$/)
-    .optional(),
+    .optional()
+    .allow('')
+    .custom((value, helpers) => {
+      // Allow empty or placeholder values
+      if (!value || value === '' || value.includes('your_private_key')) {
+        return value;
+      }
+      // Validate actual private keys
+      if (!/^(0x)?[0-9a-fA-F]{64}$/.test(value)) {
+        return helpers.error('any.invalid');
+      }
+      return value;
+    }),
 
   // Flash Loan Contract
   FLASH_LOAN_CONTRACT_ADDRESS: Joi.string()
@@ -134,9 +145,20 @@ export function loadEnvironment(): EnvironmentConfig {
  */
 export function validateExecutionMode(config: EnvironmentConfig): void {
   if (config.EXECUTION_MODE === 'live') {
-    if (!config.PRIVATE_KEY) {
+    // Check for valid private key (not empty or placeholder)
+    if (!config.PRIVATE_KEY ||
+        config.PRIVATE_KEY === '' ||
+        config.PRIVATE_KEY.includes('your_private_key')) {
       throw new Error(
-        'PRIVATE_KEY is required when EXECUTION_MODE is set to "live"'
+        'A valid PRIVATE_KEY is required when EXECUTION_MODE is set to "live". ' +
+        'Please add your real private key to the .env file.'
+      );
+    }
+
+    // Validate private key format
+    if (!/^(0x)?[0-9a-fA-F]{64}$/.test(config.PRIVATE_KEY)) {
+      throw new Error(
+        'PRIVATE_KEY must be a valid 64-character hexadecimal private key'
       );
     }
 
