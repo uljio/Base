@@ -13,6 +13,8 @@ export interface PoolReserves {
   reserve0: string;
   reserve1: string;
   timestamp: number;
+  token0: string;  // Actual token0 from the pool contract
+  token1: string;  // Actual token1 from the pool contract
 }
 
 export class ReserveFetcher {
@@ -33,12 +35,19 @@ export class ReserveFetcher {
         this.provider
       );
 
-      const [reserve0, reserve1, timestamp] = await contract.getReserves();
+      // Fetch reserves and token addresses from the pool contract
+      const [[reserve0, reserve1, timestamp], token0, token1] = await Promise.all([
+        contract.getReserves(),
+        contract.token0(),
+        contract.token1(),
+      ]);
 
       return {
         reserve0: reserve0.toString(),
         reserve1: reserve1.toString(),
         timestamp: Number(timestamp),
+        token0: token0.toLowerCase(),
+        token1: token1.toLowerCase(),
       };
     } catch (error) {
       logger.debug(`Failed to fetch reserves for ${poolAddress}: ${error}`);
