@@ -25,7 +25,7 @@ this.config = {
       maxConcurrentTrades: 3,
       dexes: ['UniswapV2', 'SushiSwap'],
       tokens: [],
-      enabled: false,
+      enabled: true, // Changed to true so bot checks for opportunities by default
     };
   }
 
@@ -150,7 +150,7 @@ this.config = {
       maxConcurrentTrades: 3,
       dexes: ['UniswapV2', 'SushiSwap'],
       tokens: [],
-      enabled: false,
+      enabled: true,
     };
     logger.info('Configuration reset to defaults');
   }
