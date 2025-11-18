@@ -18,10 +18,10 @@ async function main() {
     await sqlite.initialize();
     const chain = getCurrentChain();
 
-    // Mock tokens (Base mainnet addresses)
-    const WETH = '0x4200000000000000000000000000000000000006';
-    const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-    const DAI = '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb';
+    // Mock tokens (Base mainnet addresses) - IMPORTANT: use lowercase for consistency!
+    const WETH = '0x4200000000000000000000000000000000000006'.toLowerCase();
+    const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'.toLowerCase();
+    const DAI = '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb'.toLowerCase();
 
     // Clear existing data
     logger.info('Clearing existing pool data...');

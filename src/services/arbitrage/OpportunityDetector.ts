@@ -136,6 +136,8 @@ export class OpportunityDetector {
     tokenDecimals: Map<string, number>
   ): Promise<DetectedOpportunity | null> {
     try {
+      logger.debug(`\n🔍 findDirectArbitrage: ${tokenIn.slice(0,10)}... → ${tokenOut.slice(0,10)}...`);
+
       // Find all pools connecting these tokens
       const connectingPools = pools.filter(
         pool =>
@@ -145,7 +147,10 @@ export class OpportunityDetector {
             pool.token1.toLowerCase() === tokenIn.toLowerCase())
       );
 
+      logger.debug(`  Found ${connectingPools.length} connecting pools`);
+
       if (connectingPools.length < 2) {
+        logger.debug(`  ❌ Not enough pools (need 2)`);
         return null; // Need at least 2 pools for arbitrage
       }
 
@@ -215,14 +220,43 @@ export class OpportunityDetector {
       const decimals = tokenDecimals.get(tokenIn.toLowerCase()) || 18;
       const decimalMultiplier = Math.pow(10, decimals);
 
-      // Trade size in token wei (using correct decimals)
-      // For stablecoins: $50 USD ≈ 50 tokens
-      const amountIn = BigInt(Math.floor(this.tradeSizeUsd * decimalMultiplier));
+      // Calculate trade size based on pool price
+      // For USDC (stablecoin): $50 = 50 USDC
+      // For WETH at $3000: $50 = 0.0167 WETH
+      let amountIn: bigint;
 
-      // Determine reserve order for buy pool
+      // Estimate token price from buy pool reserves
       const buyIsToken0 = buyPool.token0.toLowerCase() === tokenIn.toLowerCase();
-      const buyReserveIn = BigInt(buyIsToken0 ? buyPool.reserve0 : buyPool.reserve1);
-      const buyReserveOut = BigInt(buyIsToken0 ? buyPool.reserve1 : buyPool.reserve0);
+      const reserveTokenIn = buyIsToken0 ? BigInt(buyPool.reserve0) : BigInt(buyPool.reserve1);
+      const reserveTokenOut = buyIsToken0 ? BigInt(buyPool.reserve1) : BigInt(buyPool.reserve0);
+
+      // Get decimals for both tokens
+      const decimalsOut = tokenDecimals.get(tokenOut.toLowerCase()) || 18;
+      logger.debug(`  Decimals: tokenIn=${decimals}, tokenOut=${decimalsOut}`)
+      logger.debug(`  Addresses: tokenIn=${tokenIn.toLowerCase()}, tokenOut=${tokenOut.toLowerCase()}`);
+
+      // Estimate price: how much tokenOut per 1 tokenIn
+      // price = reserveOut / reserveIn (adjusted for decimals)
+      const priceRatio = Number(reserveTokenOut) / Number(reserveTokenIn);
+      const decimalAdjustment = Math.pow(10, decimals - decimalsOut);
+      const tokenInPriceInTokenOut = priceRatio * decimalAdjustment;
+
+      // If tokenOut looks like a stablecoin (6-8 decimals), use it as USD proxy
+      if (decimalsOut >= 6 && decimalsOut <= 8) {
+        // tokenOut is likely a stablecoin, so price is in USD
+        const tokenInPriceUsd = tokenInPriceInTokenOut;
+        const tokenAmount = this.tradeSizeUsd / tokenInPriceUsd;
+        amountIn = BigInt(Math.floor(tokenAmount * decimalMultiplier));
+        logger.debug(`✅ Using price-based calc: tokenIn price = $${tokenInPriceUsd}, amount = ${tokenAmount} tokens = ${amountIn} wei`);
+      } else {
+        // Can't determine USD price, assume tokenIn is the stablecoin
+        amountIn = BigInt(Math.floor(this.tradeSizeUsd * decimalMultiplier));
+        logger.debug(`⚠️  Using fallback calc (decimalsOut=${decimalsOut}): $${this.tradeSizeUsd} * 10^${decimals} = ${amountIn} wei`);
+      }
+
+      // Use already calculated reserve values
+      const buyReserveIn = reserveTokenIn;
+      const buyReserveOut = reserveTokenOut;
 
       // Validate reserves aren't suspiciously small (likely bad data)
       const minReserve = BigInt(1000); // Minimum 1000 wei
@@ -232,6 +266,10 @@ export class OpportunityDetector {
       }
 
       // Calculate output from buy pool
+      logger.debug(`💱 Calculating swap: ${amountIn} wei → ?`);
+      logger.debug(`  buyReserveIn: ${buyReserveIn}, buyReserveOut: ${buyReserveOut}`);
+      logger.debug(`  fee: ${this.config.DEX_FEE_PERCENTAGE}%`);
+
       const amountOut = SwapCalculator.calculateSwapOutput(
         amountIn,
         buyReserveIn,
@@ -239,7 +277,12 @@ export class OpportunityDetector {
         this.config.DEX_FEE_PERCENTAGE
       );
 
-      if (amountOut === 0n) return null;
+      logger.debug(`  amountOut: ${amountOut}`);
+
+      if (amountOut === 0n) {
+        logger.debug(`  ❌ amountOut is 0, returning null`);
+        return null;
+      }
 
       // Determine reserve order for sell pool
       // In sell phase: we're swapping tokenOut back to tokenIn
