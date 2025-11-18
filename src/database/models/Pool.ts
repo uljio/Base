@@ -30,7 +30,18 @@ private static readonly TABLE = 'pools';
    */
   public static async upsert(data: Omit<PoolData, 'id' | 'last_updated'>): Promise<PoolData> {
     try {
-      const id = this.generatePoolId(data.chain_id, data.token0, data.token1, data.fee);
+      // Normalize token order alphabetically to prevent duplicate pools
+      // If tokens need to be swapped, also swap their reserves
+      const normalized0 = data.token0.toLowerCase();
+      const normalized1 = data.token1.toLowerCase();
+      const needsSwap = normalized0 > normalized1;
+
+      const sortedToken0 = needsSwap ? data.token1 : data.token0;
+      const sortedToken1 = needsSwap ? data.token0 : data.token1;
+      const sortedReserve0 = needsSwap ? data.reserve1 : data.reserve0;
+      const sortedReserve1 = needsSwap ? data.reserve0 : data.reserve1;
+
+      const id = this.generatePoolId(data.chain_id, sortedToken0, sortedToken1, data.fee);
       const now = Date.now();
 
       // Check if pool exists
@@ -46,8 +57,8 @@ private static readonly TABLE = 'pools';
         `);
 
         stmt.run(
-          data.reserve0,
-          data.reserve1,
+          sortedReserve0,
+          sortedReserve1,
           data.liquidity,
           data.price,
           now,
@@ -69,10 +80,10 @@ private static readonly TABLE = 'pools';
         stmt.run(
           id,
           data.chain_id,
-          data.token0,
-          data.token1,
-          data.reserve0,
-          data.reserve1,
+          sortedToken0,
+          sortedToken1,
+          sortedReserve0,
+          sortedReserve1,
           data.fee,
           data.liquidity,
           data.price,
@@ -86,7 +97,14 @@ private static readonly TABLE = 'pools';
 
       return {
         id,
-        ...data,
+        chain_id: data.chain_id,
+        token0: sortedToken0,
+        token1: sortedToken1,
+        reserve0: sortedReserve0,
+        reserve1: sortedReserve1,
+        fee: data.fee,
+        liquidity: data.liquidity,
+        price: data.price,
         last_updated: now,
       };
     } catch (error) {
@@ -122,7 +140,13 @@ private static readonly TABLE = 'pools';
     fee: number
   ): Promise<PoolData | null> {
     try {
-      const id = this.generatePoolId(chainId, token0, token1, fee);
+      // Normalize token order to match how pools are stored
+      const normalized0 = token0.toLowerCase();
+      const normalized1 = token1.toLowerCase();
+      const sortedToken0 = normalized0 < normalized1 ? token0 : token1;
+      const sortedToken1 = normalized0 < normalized1 ? token1 : token0;
+
+      const id = this.generatePoolId(chainId, sortedToken0, sortedToken1, fee);
       return this.findById(id);
     } catch (error) {
       logger.error(`Failed to find pool by tokens: ${error}`);
