@@ -82,7 +82,7 @@ this.options = options;
     this.opportunityDetector = new OpportunityDetector(
       this.chain.chainId,
       this.config.MIN_PROFIT_USD || 1.0,
-      this.config.MIN_PROFIT_PERCENTAGE || 0.1
+      0.1 // Min profit percentage
     );
 
     logger.info('ArbitrageBot initialized');
@@ -201,17 +201,14 @@ this.options = options;
    */
   private async discoverAndSavePools(): Promise<void> {
     try {
-      // Discover pools
-      const pools = await this.geckoTerminal.discoverPools(
-        this.chain.geckoTerminalId,
-        10 // Fetch 10 pages
-      );
+      // Discover pools (GeckoTerminal.discoverPools uses config.GECKO_PAGES_TO_FETCH internally)
+      const pools = await this.geckoTerminal.discoverPools();
 
       logger.info(`Discovered ${pools.length} pools from GeckoTerminal`);
 
       // Fetch reserves and decimals
       const poolAddresses = pools.map(p => p.address);
-      const reservesMap = await this.reserveFetcher.fetchMultipleReserves(poolAddresses);
+      const reservesMap = await this.reserveFetcher.batchFetchReserves(poolAddresses);
 
       // Get unique tokens
       const tokens = new Set<string>();
@@ -224,7 +221,7 @@ this.options = options;
       });
 
       // Fetch token decimals
-      const decimalsMap = await this.tokenInfo.fetchMultipleDecimals(Array.from(tokens));
+      const decimalsMap = await this.tokenInfo.batchGetDecimals(Array.from(tokens));
 
       // Save pools to database
       let savedCount = 0;
@@ -294,11 +291,15 @@ this.options = options;
       });
 
       // Fetch token decimals
-      const decimalsMap = await this.tokenInfo.fetchMultipleDecimals(Array.from(tokens));
+      const decimalsMap = await this.tokenInfo.batchGetDecimals(Array.from(tokens));
 
       // Scan for arbitrage opportunities
       const poolPrices = new Map<string, number>();
-      pools.forEach(pool => poolPrices.set(pool.id, pool.price));
+      pools.forEach(pool => {
+        if (pool.id) {
+          poolPrices.set(pool.id, pool.price);
+        }
+      });
 
       const opportunities = await this.opportunityDetector.scanOpportunities(
         Array.from(tokens),
@@ -306,7 +307,7 @@ this.options = options;
         decimalsMap
       );
 
-      // Save opportunities to database and controller
+      // Save opportunities to database
       for (const opp of opportunities) {
         await Opportunity.create({
           token_in: opp.tokenIn,
@@ -316,21 +317,9 @@ this.options = options;
           profit_usd: opp.profitUsd,
           profit_percentage: opp.profitPercentage,
           route: JSON.stringify(opp.route),
-          confidence: opp.confidence,
           chain_id: this.chain.chainId,
           status: 'pending',
-        });
-
-        // Add to controller for API access
-        opportunitiesController.addOpportunity({
-          id: Date.now().toString(),
-          tokenIn: opp.tokenIn,
-          tokenOut: opp.tokenOut,
-          profit: opp.profitUsd,
-          profitPercentage: opp.profitPercentage,
-          timestamp: Date.now(),
-          pools: opp.route.pools,
-          route: opp.route.path,
+          expires_at: Date.now() + 60000, // Expire in 1 minute
         });
       }
 
