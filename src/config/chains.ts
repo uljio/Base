@@ -24,12 +24,12 @@ export const BASE_MAINNET: ChainConfig = {
   chainId: 8453,
   name: 'Base Mainnet',
   rpcUrls: [
-    // Use public RPCs first, then Alchemy if API key is provided
-    'https://mainnet.base.org',
-    'https://base.publicnode.com',
+    // Prioritize Alchemy if API key is provided (better rate limits and reliability)
     ...(process.env.ALCHEMY_API_KEY && process.env.ALCHEMY_API_KEY !== 'your_alchemy_api_key_here'
       ? [`https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`]
       : []),
+    'https://mainnet.base.org',
+    'https://base.publicnode.com',
   ],
   wsRpcUrls: [
     ...(process.env.ALCHEMY_API_KEY && process.env.ALCHEMY_API_KEY !== 'your_alchemy_api_key_here'
