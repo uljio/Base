@@ -2,6 +2,7 @@
 
 import { ethers } from 'ethers';
 import { logger } from '../utils/Logger';
+import { CurlRpcProvider } from './CurlRpcProvider';
 
 const ERC20_ABI = [
   'function decimals() external view returns (uint8)',
@@ -20,7 +21,8 @@ export interface TokenMetadata {
  * Token information fetcher with caching
  */
 export class TokenInfo {
-  private provider: ethers.Provider;
+  private provider: ethers.Provider | CurlRpcProvider;
+  private iface: ethers.Interface;
   private cache: Map<string, TokenMetadata> = new Map();
 
   // Known token decimals for Base mainnet
@@ -32,8 +34,9 @@ export class TokenInfo {
     '0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca': 6,  // USDbC
   };
 
-  constructor(provider: ethers.Provider) {
+  constructor(provider: ethers.Provider | CurlRpcProvider) {
     this.provider = provider;
+    this.iface = new ethers.Interface(ERC20_ABI);
   }
 
   /**
@@ -56,13 +59,28 @@ export class TokenInfo {
 
     // Fetch from blockchain
     try {
-      const contract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
-      const decimals = await contract.decimals();
-      return Number(decimals);
+      if (this.provider instanceof CurlRpcProvider) {
+        return await this.getDecimalsWithCurl(tokenAddress);
+      } else {
+        const contract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider as ethers.Provider);
+        const decimals = await contract.decimals();
+        return Number(decimals);
+      }
     } catch (error) {
       logger.warn(`Failed to fetch decimals for ${tokenAddress}, defaulting to 18: ${error}`);
       return 18; // Default to 18 if fetch fails
     }
+  }
+
+  /**
+   * Get token decimals using curl-based RPC provider
+   */
+  private async getDecimalsWithCurl(tokenAddress: string): Promise<number> {
+    const curlProvider = this.provider as CurlRpcProvider;
+    const decimalsData = this.iface.encodeFunctionData('decimals', []);
+    const result = await curlProvider.ethCall(tokenAddress, decimalsData);
+    const [decimals] = this.iface.decodeFunctionResult('decimals', result);
+    return Number(decimals);
   }
 
   /**
@@ -78,17 +96,43 @@ export class TokenInfo {
     }
 
     try {
-      const contract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
+      let decimals: number;
+      let symbol: string;
+      let name: string;
 
-      const [decimals, symbol, name] = await Promise.all([
-        contract.decimals(),
-        contract.symbol(),
-        contract.name(),
-      ]);
+      if (this.provider instanceof CurlRpcProvider) {
+        const curlProvider = this.provider as CurlRpcProvider;
+        const decimalsData = this.iface.encodeFunctionData('decimals', []);
+        const symbolData = this.iface.encodeFunctionData('symbol', []);
+        const nameData = this.iface.encodeFunctionData('name', []);
+
+        const results = await curlProvider.batchCall([
+          { method: 'eth_call', params: [{ to: tokenAddress, data: decimalsData }, 'latest'] },
+          { method: 'eth_call', params: [{ to: tokenAddress, data: symbolData }, 'latest'] },
+          { method: 'eth_call', params: [{ to: tokenAddress, data: nameData }, 'latest'] },
+        ]);
+
+        [decimals] = this.iface.decodeFunctionResult('decimals', results[0]);
+        [symbol] = this.iface.decodeFunctionResult('symbol', results[1]);
+        [name] = this.iface.decodeFunctionResult('name', results[2]);
+        decimals = Number(decimals);
+      } else {
+        const contract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider as ethers.Provider);
+
+        const results = await Promise.all([
+          contract.decimals(),
+          contract.symbol(),
+          contract.name(),
+        ]);
+
+        decimals = Number(results[0]);
+        symbol = results[1];
+        name = results[2];
+      }
 
       const metadata: TokenMetadata = {
         address: normalized,
-        decimals: Number(decimals),
+        decimals,
         symbol,
         name,
       };

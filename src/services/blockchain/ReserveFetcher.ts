@@ -2,6 +2,7 @@
 
 import { ethers } from 'ethers';
 import { logger } from '../utils/Logger';
+import { CurlRpcProvider } from './CurlRpcProvider';
 
 const UNISWAP_V2_PAIR_ABI = [
   'function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
@@ -18,10 +19,12 @@ export interface PoolReserves {
 }
 
 export class ReserveFetcher {
-  private provider: ethers.Provider;
+  private provider: ethers.Provider | CurlRpcProvider;
+  private iface: ethers.Interface;
 
-  constructor(provider: ethers.Provider) {
+  constructor(provider: ethers.Provider | CurlRpcProvider) {
     this.provider = provider;
+    this.iface = new ethers.Interface(UNISWAP_V2_PAIR_ABI);
   }
 
   /**
@@ -29,10 +32,65 @@ export class ReserveFetcher {
    */
   async fetchReserves(poolAddress: string): Promise<PoolReserves | null> {
     try {
+      // Check if we're using CurlRpcProvider
+      if (this.provider instanceof CurlRpcProvider) {
+        return await this.fetchReservesWithCurl(poolAddress);
+      } else {
+        return await this.fetchReservesWithEthers(poolAddress);
+      }
+    } catch (error) {
+      logger.debug(`Failed to fetch reserves for ${poolAddress}: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch reserves using curl-based RPC provider
+   */
+  private async fetchReservesWithCurl(poolAddress: string): Promise<PoolReserves | null> {
+    try {
+      const curlProvider = this.provider as CurlRpcProvider;
+
+      // Encode function calls
+      const getReservesData = this.iface.encodeFunctionData('getReserves', []);
+      const token0Data = this.iface.encodeFunctionData('token0', []);
+      const token1Data = this.iface.encodeFunctionData('token1', []);
+
+      // Make batch RPC call
+      const results = await curlProvider.batchCall([
+        { method: 'eth_call', params: [{ to: poolAddress, data: getReservesData }, 'latest'] },
+        { method: 'eth_call', params: [{ to: poolAddress, data: token0Data }, 'latest'] },
+        { method: 'eth_call', params: [{ to: poolAddress, data: token1Data }, 'latest'] },
+      ]);
+
+      // Decode results
+      const [reserve0, reserve1, timestamp] = this.iface.decodeFunctionResult('getReserves', results[0]);
+      const [token0] = this.iface.decodeFunctionResult('token0', results[1]);
+      const [token1] = this.iface.decodeFunctionResult('token1', results[2]);
+
+      return {
+        reserve0: reserve0.toString(),
+        reserve1: reserve1.toString(),
+        timestamp: Number(timestamp),
+        token0: token0.toLowerCase(),
+        token1: token1.toLowerCase(),
+      };
+    } catch (error) {
+      logger.debug(`Failed to fetch reserves with curl for ${poolAddress}: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch reserves using ethers.js provider (fallback)
+   */
+  private async fetchReservesWithEthers(poolAddress: string): Promise<PoolReserves | null> {
+    try {
+      const ethersProvider = this.provider as ethers.Provider;
       const contract = new ethers.Contract(
         poolAddress,
         UNISWAP_V2_PAIR_ABI,
-        this.provider
+        ethersProvider
       );
 
       // Fetch reserves and token addresses from the pool contract
@@ -50,7 +108,7 @@ export class ReserveFetcher {
         token1: token1.toLowerCase(),
       };
     } catch (error) {
-      logger.debug(`Failed to fetch reserves for ${poolAddress}: ${error}`);
+      logger.debug(`Failed to fetch reserves with ethers for ${poolAddress}: ${error}`);
       return null;
     }
   }

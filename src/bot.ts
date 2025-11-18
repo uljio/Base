@@ -14,6 +14,7 @@ import { Pool } from './database/models/Pool';
 import { Opportunity } from './database/models/Opportunity';
 import { getConfig } from './config/environment';
 import { getCurrentChain } from './config/chains';
+import { CurlRpcProvider } from './services/blockchain/CurlRpcProvider';
 
 export interface BotOptions {
   rpcUrl: string;
@@ -23,11 +24,13 @@ export interface BotOptions {
   apiPort?: number;
   apiHost?: string;
   dryRunMode?: boolean;
+  useCurlRpc?: boolean; // Use curl-based RPC provider (default: true)
 }
 
 export class ArbitrageBot {
   // logger imported from utils
   private provider: ethers.JsonRpcProvider;
+  private curlProvider: CurlRpcProvider | null = null;
   private wallet: ethers.Wallet;
   private contract: ethers.Contract;
   private executor: FlashLoanExecutor;
@@ -46,9 +49,9 @@ export class ArbitrageBot {
   private chain = getCurrentChain();
 
   constructor(options: BotOptions) {
-this.options = options;
+    this.options = options;
 
-    // Initialize provider
+    // Initialize provider (still needed for wallet and contract operations)
     this.provider = new ethers.JsonRpcProvider(options.rpcUrl);
 
     // Initialize wallet
@@ -77,8 +80,20 @@ this.options = options;
 
     // Initialize discovery and monitoring services
     this.geckoTerminal = new GeckoTerminal();
-    this.reserveFetcher = new ReserveFetcher(this.provider);
-    this.tokenInfo = new TokenInfo(this.provider);
+
+    // Use curl-based RPC provider by default (works around ethers.js connectivity issues)
+    const useCurlRpc = options.useCurlRpc !== false; // Default to true
+    if (useCurlRpc) {
+      logger.info('Using curl-based RPC provider for data fetching');
+      this.curlProvider = new CurlRpcProvider(options.rpcUrl);
+      this.reserveFetcher = new ReserveFetcher(this.curlProvider);
+      this.tokenInfo = new TokenInfo(this.curlProvider);
+    } else {
+      logger.info('Using ethers.js RPC provider for data fetching');
+      this.reserveFetcher = new ReserveFetcher(this.provider);
+      this.tokenInfo = new TokenInfo(this.provider);
+    }
+
     this.opportunityDetector = new OpportunityDetector(
       this.chain.chainId,
       this.config.MIN_PROFIT_USD || 1.0,
