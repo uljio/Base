@@ -38,7 +38,7 @@ const envSchema = Joi.object({
     .allow(''),
 
   // Bot Configuration
-  MIN_PROFIT_USD: Joi.number().min(0).default(10),
+  MIN_PROFIT_USD: Joi.number().min(0).default(0.10),
   MAX_GAS_PRICE_GWEI: Joi.number().min(0).default(5),
   EXECUTION_MODE: Joi.string().valid('dry-run', 'live').default('dry-run'),
   LOG_LEVEL: Joi.string()
@@ -62,11 +62,11 @@ const envSchema = Joi.object({
     .default('base-mainnet'),
 
   // Pool Discovery
-  MIN_LIQUIDITY_USD: Joi.number().min(0).default(25000),
-  MAX_POOLS_TO_MONITOR: Joi.number().min(1).max(1000).default(750),
+  MIN_LIQUIDITY_USD: Joi.number().min(0).default(10000),
+  MAX_POOLS_TO_MONITOR: Joi.number().min(1).max(2000).default(1500),
   POOL_UPDATE_INTERVAL_MINUTES: Joi.number().min(1).default(60),
   POOL_UPDATE_INTERVAL_SECONDS: Joi.number().min(1).default(60),
-  GECKO_PAGES_TO_FETCH: Joi.number().min(1).max(30).default(10),
+  GECKO_PAGES_TO_FETCH: Joi.number().min(1).max(30).default(25),
   ACCEPT_ALL_TOKENS: Joi.boolean().default(true),
 
   // Token Filtering
@@ -78,8 +78,8 @@ const envSchema = Joi.object({
   BLOCK_PROCESSING_TIMEOUT_MS: Joi.number().min(100).default(1000),
 
   // Flash Loan Configuration
-  FLASH_LOAN_SIZE_USD: Joi.number().min(1).default(50),
-  MIN_NET_PROFIT_USD: Joi.number().min(0).default(1.00),
+  FLASH_LOAN_SIZE_USD: Joi.number().min(1).default(500),
+  MIN_NET_PROFIT_USD: Joi.number().min(0).default(0.10),
   AAVE_POOL_ADDRESS_PROVIDER: Joi.string()
     .pattern(/^0x[0-9a-fA-F]{40}$/)
     .default('0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D'), // Base mainnet

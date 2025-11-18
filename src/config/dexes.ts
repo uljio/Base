@@ -28,6 +28,17 @@ export const AERODROME: DexConfig = {
 };
 
 /**
+ * Velodrome - Major Base DEX (V2 style, fork of Aerodrome)
+ */
+export const VELODROME: DexConfig = {
+  name: 'Velodrome',
+  type: DexType.UNISWAP_V2,
+  routerAddress: '0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858',
+  factoryAddress: '0x25CbdDb98b35ab1FF77413456B31EC81A6B6B746',
+  defaultFee: 30, // 0.3%
+};
+
+/**
  * BaseSwap (V2 style)
  */
 export const BASESWAP: DexConfig = {
@@ -78,6 +89,7 @@ export const SUSHISWAP_V2: DexConfig = {
 export const ALL_DEXES: DexConfig[] = [
   UNISWAP_V3,
   AERODROME,
+  VELODROME,
   BASESWAP,
   SWAPBASED,
   SUSHISWAP_V3,
