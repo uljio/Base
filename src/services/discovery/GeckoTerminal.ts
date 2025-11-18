@@ -2,14 +2,16 @@
  * Pool discovery using GeckoTerminal API
  */
 
-import axios, { AxiosInstance } from 'axios';
-import https from 'https';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { PoolInfo, DexType, TokenInfo } from '../../types/dex.types';
 import { getTokenByAddress } from '../../config/tokens';
 import { getDexConfig } from '../../config/dexes';
 import { getConfig } from '../../config/environment';
 import { logger, logServiceStart, logServiceError } from '../utils/Logger';
 import { RateLimiter, withRetry, sleep } from '../utils/ErrorHandler';
+
+const execAsync = promisify(exec);
 
 interface GeckoPool {
   id: string;
@@ -55,31 +57,13 @@ interface GeckoResponse {
 }
 
 export class GeckoTerminal {
-  private client: AxiosInstance;
+  private baseURL: string = 'https://api.geckoterminal.com/api/v2';
   private rateLimiter: RateLimiter;
   private cache: Map<string, { data: PoolInfo[]; timestamp: number }> = new Map();
   private cacheTTL: number = 5 * 60 * 1000; // 5 minutes
   private config = getConfig();
 
   constructor() {
-    // Create a custom HTTPS agent with proper settings
-    const httpsAgent = new https.Agent({
-      keepAlive: true,
-      maxSockets: 10,
-      rejectUnauthorized: true, // Keep SSL verification enabled
-    });
-
-    this.client = axios.create({
-      baseURL: 'https://api.geckoterminal.com/api/v2',
-      timeout: 15000,
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'Mozilla/5.0 (compatible; ArbitrageBot/1.0)',
-      },
-      httpsAgent,
-      maxRedirects: 5, // Limit redirects to prevent infinite loops
-    });
-
     // GeckoTerminal rate limit: 30 requests per minute
     // 30 req/min = 0.5 req/sec refill rate
     this.rateLimiter = new RateLimiter(30, 0.5); // 30 tokens, refill at 0.5 per second
@@ -183,6 +167,7 @@ export class GeckoTerminal {
 
   /**
    * Fetch a single page with specified sorting
+   * Uses curl as HTTP client to work around Node.js DNS/redirect issues in this environment
    */
   private async fetchPage(page: number, sort: string): Promise<PoolInfo[]> {
     try {
@@ -190,22 +175,15 @@ export class GeckoTerminal {
 
       const pools = await withRetry(
         async () => {
-          // Use direct URL with params to work around axios redirect issues
-          const url = `${this.client.defaults.baseURL}/networks/base/pools?sort=${sort}&page=${page}`;
+          const url = `${this.baseURL}/networks/base/pools?sort=${sort}&page=${page}`;
 
-          try {
-            const response = await this.client.get<GeckoResponse>(url, {
-              baseURL: '',  // Override baseURL to use full URL
-            });
-            return this.parsePools(response.data);
-          } catch (error: any) {
-            // If axios fails with redirect error, this is a known issue with follow-redirects
-            // The API is working (curl confirms), so this is an axios bug
-            if (error.message?.includes('redirect')) {
-              logger.warn('Axios redirect loop detected - this is a known axios/follow-redirects bug');
-            }
-            throw error;
-          }
+          // Use curl which works reliably in this environment
+          const { stdout } = await execAsync(
+            `curl -s -H "Accept: application/json" -H "User-Agent: Mozilla/5.0 (compatible; ArbitrageBot/1.0)" "${url}"`
+          );
+
+          const response: GeckoResponse = JSON.parse(stdout);
+          return this.parsePools(response);
         },
         {
           maxAttempts: 3,
@@ -288,16 +266,21 @@ export class GeckoTerminal {
 
   /**
    * Get pool details by address
+   * Uses curl as HTTP client to work around Node.js DNS/redirect issues in this environment
    */
   async getPool(poolAddress: string): Promise<PoolInfo | null> {
     try {
       await this.rateLimiter.acquire();
 
-      const response = await this.client.get<GeckoResponse>(
-        `/networks/base/pools/${poolAddress}`
+      const url = `${this.baseURL}/networks/base/pools/${poolAddress}`;
+
+      // Use curl which works reliably in this environment
+      const { stdout } = await execAsync(
+        `curl -s -H "Accept: application/json" -H "User-Agent: Mozilla/5.0 (compatible; ArbitrageBot/1.0)" "${url}"`
       );
 
-      const pools = this.parsePools(response.data);
+      const response: GeckoResponse = JSON.parse(stdout);
+      const pools = this.parsePools(response);
       return pools[0] || null;
     } catch (error) {
       logger.warn('Failed to get pool details', {
