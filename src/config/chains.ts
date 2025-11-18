@@ -24,12 +24,17 @@ export const BASE_MAINNET: ChainConfig = {
   chainId: 8453,
   name: 'Base Mainnet',
   rpcUrls: [
-    `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+    // Use public RPCs first, then Alchemy if API key is provided
     'https://mainnet.base.org',
     'https://base.publicnode.com',
+    ...(process.env.ALCHEMY_API_KEY && process.env.ALCHEMY_API_KEY !== 'your_alchemy_api_key_here'
+      ? [`https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`]
+      : []),
   ],
   wsRpcUrls: [
-    `wss://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+    ...(process.env.ALCHEMY_API_KEY && process.env.ALCHEMY_API_KEY !== 'your_alchemy_api_key_here'
+      ? [`wss://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`]
+      : []),
   ],
   blockTime: 2, // ~2 seconds per block
   nativeCurrency: {
