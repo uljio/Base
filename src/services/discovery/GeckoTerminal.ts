@@ -3,12 +3,13 @@
  */
 
 import axios, { AxiosInstance } from 'axios';
+import https from 'https';
 import { PoolInfo, DexType, TokenInfo } from '../../types/dex.types';
 import { getTokenByAddress } from '../../config/tokens';
 import { getDexConfig } from '../../config/dexes';
 import { getConfig } from '../../config/environment';
 import { logger, logServiceStart, logServiceError } from '../utils/Logger';
-import { RateLimiter, withRetry } from '../utils/ErrorHandler';
+import { RateLimiter, withRetry, sleep } from '../utils/ErrorHandler';
 
 interface GeckoPool {
   id: string;
@@ -61,16 +62,27 @@ export class GeckoTerminal {
   private config = getConfig();
 
   constructor() {
+    // Create a custom HTTPS agent with proper settings
+    const httpsAgent = new https.Agent({
+      keepAlive: true,
+      maxSockets: 10,
+      rejectUnauthorized: true, // Keep SSL verification enabled
+    });
+
     this.client = axios.create({
       baseURL: 'https://api.geckoterminal.com/api/v2',
-      timeout: 10000,
+      timeout: 15000,
       headers: {
         Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; ArbitrageBot/1.0)',
       },
+      httpsAgent,
+      maxRedirects: 5, // Limit redirects to prevent infinite loops
     });
 
     // GeckoTerminal rate limit: 30 requests per minute
-    this.rateLimiter = new RateLimiter(30, 1 / 60); // 30 tokens, refill at 0.5 per second
+    // 30 req/min = 0.5 req/sec refill rate
+    this.rateLimiter = new RateLimiter(30, 0.5); // 30 tokens, refill at 0.5 per second
   }
 
   /**
@@ -148,12 +160,22 @@ export class GeckoTerminal {
     for (let page = 1; page <= volumePages; page++) {
       const pools = await this.fetchPage(page, 'h24_volume_usd_desc');
       pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
+
+      // Small delay between pages to avoid Cloudflare bot detection
+      if (page < volumePages) {
+        await sleep(1000); // 1 second delay between pages
+      }
     }
 
     // Strategy 2: High tx count pools (active trading, potential arbitrage)
     for (let page = 1; page <= txPages; page++) {
       const pools = await this.fetchPage(page, 'h24_tx_count_desc');
       pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
+
+      // Small delay between pages to avoid Cloudflare bot detection
+      if (page < txPages) {
+        await sleep(1000); // 1 second delay between pages
+      }
     }
 
     return Array.from(poolMap.values());
@@ -168,14 +190,22 @@ export class GeckoTerminal {
 
       const pools = await withRetry(
         async () => {
-          const response = await this.client.get<GeckoResponse>(
-            '/networks/base/pools',
-            {
-              params: { sort, page },
-            }
-          );
+          // Use direct URL with params to work around axios redirect issues
+          const url = `${this.client.defaults.baseURL}/networks/base/pools?sort=${sort}&page=${page}`;
 
-          return this.parsePools(response.data);
+          try {
+            const response = await this.client.get<GeckoResponse>(url, {
+              baseURL: '',  // Override baseURL to use full URL
+            });
+            return this.parsePools(response.data);
+          } catch (error: any) {
+            // If axios fails with redirect error, this is a known issue with follow-redirects
+            // The API is working (curl confirms), so this is an axios bug
+            if (error.message?.includes('redirect')) {
+              logger.warn('Axios redirect loop detected - this is a known axios/follow-redirects bug');
+            }
+            throw error;
+          }
         },
         {
           maxAttempts: 3,

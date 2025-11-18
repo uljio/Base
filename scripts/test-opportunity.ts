@@ -79,17 +79,36 @@ async function main() {
     // Save pools to database with real reserve data
     console.log('Saving pools to database...\n');
     let savedCount = 0;
+    let mismatchCount = 0;
+
     for (const pool of pools) {
       const reserves = reservesMap.get(pool.address.toLowerCase());
 
       if (reserves) {
-        // Calculate price from reserves
+        // Verify that GeckoTerminal's token order matches the pool contract's order
+        const gtToken0 = pool.token0.address.toLowerCase();
+        const gtToken1 = pool.token1.address.toLowerCase();
+        const contractToken0 = reserves.token0;
+        const contractToken1 = reserves.token1;
+
+        // Check if ordering matches
+        const orderMatches = (gtToken0 === contractToken0 && gtToken1 === contractToken1);
+
+        if (!orderMatches) {
+          // Log mismatch for debugging
+          console.log(`⚠️  Token order mismatch for pool ${pool.address}:`);
+          console.log(`    GeckoTerminal: token0=${gtToken0}, token1=${gtToken1}`);
+          console.log(`    Pool contract: token0=${contractToken0}, token1=${contractToken1}`);
+          mismatchCount++;
+        }
+
+        // Use the pool contract's actual token0/token1 order (the source of truth)
         const price = Pool.calculatePrice(reserves.reserve0, reserves.reserve1);
 
         await Pool.upsert({
           chain_id: chain.chainId,
-          token0: pool.token0.address,
-          token1: pool.token1.address,
+          token0: reserves.token0,  // Use actual token0 from pool contract
+          token1: reserves.token1,  // Use actual token1 from pool contract
           reserve0: reserves.reserve0,
           reserve1: reserves.reserve1,
           fee: pool.fee,
@@ -104,6 +123,9 @@ async function main() {
     }
 
     console.log(`Saved ${savedCount} pools with valid reserves\n`);
+    if (mismatchCount > 0) {
+      console.log(`⚠️  Found ${mismatchCount} pools with token order mismatches (fixed using contract data)\n`);
+    }
 
     // Create a price map from pools with valid reserves
     const poolPrices = new Map<string, number>();
