@@ -6,6 +6,14 @@ import { opportunitiesController } from './api/routes/opportunities';
 import { configController } from './api/routes/config';
 import { logger } from './services/utils/Logger';
 import sqlite from './database/sqlite';
+import { GeckoTerminal } from './services/discovery/GeckoTerminal';
+import { ReserveFetcher } from './services/blockchain/ReserveFetcher';
+import { TokenInfo } from './services/blockchain/TokenInfo';
+import { OpportunityDetector } from './services/arbitrage/OpportunityDetector';
+import { Pool } from './database/models/Pool';
+import { Opportunity } from './database/models/Opportunity';
+import { getConfig } from './config/environment';
+import { getCurrentChain } from './config/chains';
 
 export interface BotOptions {
   rpcUrl: string;
@@ -28,6 +36,14 @@ export class ArbitrageBot {
   private checkInterval: NodeJS.Timeout | null = null;
   private startTime: number = 0;
   private options: BotOptions;
+  private geckoTerminal: GeckoTerminal;
+  private reserveFetcher: ReserveFetcher;
+  private tokenInfo: TokenInfo;
+  private opportunityDetector: OpportunityDetector;
+  private lastPoolDiscovery: number = 0;
+  private poolDiscoveryIntervalMs: number = 3600000; // 1 hour
+  private config = getConfig();
+  private chain = getCurrentChain();
 
   constructor(options: BotOptions) {
 this.options = options;
@@ -59,6 +75,16 @@ this.options = options;
     };
     this.apiServer = new APIServer(serverConfig);
 
+    // Initialize discovery and monitoring services
+    this.geckoTerminal = new GeckoTerminal();
+    this.reserveFetcher = new ReserveFetcher(this.provider);
+    this.tokenInfo = new TokenInfo(this.provider);
+    this.opportunityDetector = new OpportunityDetector(
+      this.chain.chainId,
+      this.config.MIN_PROFIT_USD || 1.0,
+      this.config.MIN_PROFIT_PERCENTAGE || 0.1
+    );
+
     logger.info('ArbitrageBot initialized');
   }
 
@@ -79,6 +105,9 @@ this.options = options;
       // Initialize database
       logger.info('Initializing database...');
       await sqlite.initialize();
+
+      // Discover pools on startup if database is empty
+      await this.discoverPoolsIfNeeded();
 
       // Update status
       statusController.setRunning(true);
@@ -144,6 +173,91 @@ this.options = options;
   }
 
   /**
+   * Discover pools from GeckoTerminal if needed
+   */
+  private async discoverPoolsIfNeeded(): Promise<void> {
+    try {
+      // Check if we need to rediscover pools
+      const now = Date.now();
+      const shouldRediscover = now - this.lastPoolDiscovery > this.poolDiscoveryIntervalMs;
+
+      // Check pool count in database
+      const poolCount = await Pool.findByChain(this.chain.chainId, 1);
+
+      if (poolCount.length === 0 || shouldRediscover) {
+        logger.info('Discovering pools from GeckoTerminal...');
+        await this.discoverAndSavePools();
+        this.lastPoolDiscovery = now;
+      } else {
+        logger.info(`Found ${poolCount.length} existing pools in database, skipping discovery`);
+      }
+    } catch (error) {
+      logger.error(`Pool discovery failed: ${error}`);
+    }
+  }
+
+  /**
+   * Discover pools from GeckoTerminal and save to database
+   */
+  private async discoverAndSavePools(): Promise<void> {
+    try {
+      // Discover pools
+      const pools = await this.geckoTerminal.discoverPools(
+        this.chain.geckoTerminalId,
+        10 // Fetch 10 pages
+      );
+
+      logger.info(`Discovered ${pools.length} pools from GeckoTerminal`);
+
+      // Fetch reserves and decimals
+      const poolAddresses = pools.map(p => p.address);
+      const reservesMap = await this.reserveFetcher.fetchMultipleReserves(poolAddresses);
+
+      // Get unique tokens
+      const tokens = new Set<string>();
+      pools.forEach(pool => {
+        const reserves = reservesMap.get(pool.address.toLowerCase());
+        if (reserves) {
+          tokens.add(reserves.token0);
+          tokens.add(reserves.token1);
+        }
+      });
+
+      // Fetch token decimals
+      const decimalsMap = await this.tokenInfo.fetchMultipleDecimals(Array.from(tokens));
+
+      // Save pools to database
+      let savedCount = 0;
+      for (const pool of pools) {
+        const reserves = reservesMap.get(pool.address.toLowerCase());
+        if (reserves) {
+          const token0Decimals = decimalsMap.get(reserves.token0) || 18;
+          const token1Decimals = decimalsMap.get(reserves.token1) || 18;
+
+          const price = parseFloat(reserves.reserve1) / parseFloat(reserves.reserve0);
+
+          await Pool.upsert({
+            chain_id: this.chain.chainId,
+            token0: reserves.token0,
+            token1: reserves.token1,
+            reserve0: reserves.reserve0,
+            reserve1: reserves.reserve1,
+            fee: pool.fee,
+            liquidity: pool.liquidityUSD.toString(),
+            price: price,
+          });
+          savedCount++;
+        }
+      }
+
+      logger.info(`Saved ${savedCount} pools with valid reserves to database`);
+    } catch (error) {
+      logger.error(`Failed to discover and save pools: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
    * Check for arbitrage opportunities
    */
   private async checkOpportunities(): Promise<void> {
@@ -158,12 +272,71 @@ this.options = options;
       const uptime = Date.now() - this.startTime;
       statusController.setUptime(uptime);
 
-      // TODO: Implement actual opportunity detection logic
-      // This would involve:
-      // 1. Fetching prices from multiple DEXes
-      // 2. Calculating profit margins
-      // 3. Finding profitable arbitrage opportunities
-      // 4. Storing them in opportunitiesController
+      // Periodically rediscover pools
+      await this.discoverPoolsIfNeeded();
+
+      // Get all pools from database
+      const pools = await Pool.findByChain(this.chain.chainId, 10000);
+
+      if (pools.length === 0) {
+        logger.debug('No pools in database, skipping opportunity check');
+        return;
+      }
+
+      // Note: Pool reserves are refreshed during periodic pool discovery
+      // For real-time trading, consider adding pool_address field to enable per-block reserve updates
+
+      // Get unique tokens
+      const tokens = new Set<string>();
+      pools.forEach(pool => {
+        tokens.add(pool.token0);
+        tokens.add(pool.token1);
+      });
+
+      // Fetch token decimals
+      const decimalsMap = await this.tokenInfo.fetchMultipleDecimals(Array.from(tokens));
+
+      // Scan for arbitrage opportunities
+      const poolPrices = new Map<string, number>();
+      pools.forEach(pool => poolPrices.set(pool.id, pool.price));
+
+      const opportunities = await this.opportunityDetector.scanOpportunities(
+        Array.from(tokens),
+        poolPrices,
+        decimalsMap
+      );
+
+      // Save opportunities to database and controller
+      for (const opp of opportunities) {
+        await Opportunity.create({
+          token_in: opp.tokenIn,
+          token_out: opp.tokenOut,
+          amount_in: opp.amountIn,
+          amount_out_predicted: opp.amountOutPredicted,
+          profit_usd: opp.profitUsd,
+          profit_percentage: opp.profitPercentage,
+          route: JSON.stringify(opp.route),
+          confidence: opp.confidence,
+          chain_id: this.chain.chainId,
+          status: 'pending',
+        });
+
+        // Add to controller for API access
+        opportunitiesController.addOpportunity({
+          id: Date.now().toString(),
+          tokenIn: opp.tokenIn,
+          tokenOut: opp.tokenOut,
+          profit: opp.profitUsd,
+          profitPercentage: opp.profitPercentage,
+          timestamp: Date.now(),
+          pools: opp.route.pools,
+          route: opp.route.path,
+        });
+      }
+
+      if (opportunities.length > 0) {
+        logger.info(`Found ${opportunities.length} profitable opportunities`);
+      }
 
       logger.debug('Opportunity check cycle completed');
     } catch (error) {
