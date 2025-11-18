@@ -8,7 +8,7 @@ import { getTokenByAddress } from '../../config/tokens';
 import { getDexConfig } from '../../config/dexes';
 import { getConfig } from '../../config/environment';
 import { logger, logServiceStart, logServiceError } from '../utils/Logger';
-import { RateLimiter, withRetry } from '../utils/ErrorHandler';
+import { RateLimiter, withRetry, sleep } from '../utils/ErrorHandler';
 
 interface GeckoPool {
   id: string;
@@ -66,11 +66,13 @@ export class GeckoTerminal {
       timeout: 10000,
       headers: {
         Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; ArbitrageBot/1.0)',
       },
     });
 
     // GeckoTerminal rate limit: 30 requests per minute
-    this.rateLimiter = new RateLimiter(30, 1 / 60); // 30 tokens, refill at 0.5 per second
+    // 30 req/min = 0.5 req/sec refill rate
+    this.rateLimiter = new RateLimiter(30, 0.5); // 30 tokens, refill at 0.5 per second
   }
 
   /**
@@ -148,12 +150,22 @@ export class GeckoTerminal {
     for (let page = 1; page <= volumePages; page++) {
       const pools = await this.fetchPage(page, 'h24_volume_usd_desc');
       pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
+
+      // Small delay between pages to avoid Cloudflare bot detection
+      if (page < volumePages) {
+        await sleep(1000); // 1 second delay between pages
+      }
     }
 
     // Strategy 2: High tx count pools (active trading, potential arbitrage)
     for (let page = 1; page <= txPages; page++) {
       const pools = await this.fetchPage(page, 'h24_tx_count_desc');
       pools.forEach(pool => poolMap.set(pool.address.toLowerCase(), pool));
+
+      // Small delay between pages to avoid Cloudflare bot detection
+      if (page < txPages) {
+        await sleep(1000); // 1 second delay between pages
+      }
     }
 
     return Array.from(poolMap.values());
