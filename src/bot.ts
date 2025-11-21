@@ -108,7 +108,20 @@ export class ArbitrageBot {
     // Initialize direct blockchain scanning if enabled
     if (this.config.USE_DIRECT_BLOCKCHAIN) {
       logger.info('Direct blockchain mode enabled - initializing factory scanner');
-      this.multiProviderManager = new MultiProviderManager(DEFAULT_BASE_RPCS);
+
+      // Create provider configs with Alchemy as first priority
+      const providerConfigs = [
+        // Tier 0: Alchemy (highest priority, already configured)
+        {
+          url: options.rpcUrl,  // This is the Alchemy URL from main.js
+          name: 'Alchemy',
+          priority: 0,
+          useCurl: false,
+        },
+        ...DEFAULT_BASE_RPCS,  // Add public RPCs as fallback
+      ];
+
+      this.multiProviderManager = new MultiProviderManager(providerConfigs);
       this.factoryScanner = new FactoryScanner(this.multiProviderManager);
     }
 
