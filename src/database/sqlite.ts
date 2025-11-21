@@ -113,10 +113,25 @@ class SQLiteDatabase {
           price_impact_50usd REAL
         );
 
+        CREATE TABLE IF NOT EXISTS pool_cache (
+          address TEXT PRIMARY KEY,
+          dex TEXT NOT NULL,
+          dex_type TEXT NOT NULL,
+          token0 TEXT NOT NULL,
+          token1 TEXT NOT NULL,
+          fee INTEGER NOT NULL,
+          discovered_at INTEGER NOT NULL,
+          last_scanned INTEGER,
+          is_active BOOLEAN DEFAULT 1
+        );
+
         CREATE INDEX IF NOT EXISTS idx_opportunities_status ON opportunities(status);
         CREATE INDEX IF NOT EXISTS idx_opportunities_expires_at ON opportunities(expires_at);
         CREATE INDEX IF NOT EXISTS idx_executions_status ON executions(status);
         CREATE INDEX IF NOT EXISTS idx_pools_chain_token ON pools(chain_id, token0, token1);
+        CREATE INDEX IF NOT EXISTS idx_pool_cache_dex ON pool_cache(dex);
+        CREATE INDEX IF NOT EXISTS idx_pool_cache_tokens ON pool_cache(token0, token1);
+        CREATE INDEX IF NOT EXISTS idx_pool_cache_active ON pool_cache(is_active);
       `);
 
       logger.info('Database migrations completed');

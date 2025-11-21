@@ -69,6 +69,11 @@ const envSchema = Joi.object({
   GECKO_PAGES_TO_FETCH: Joi.number().min(1).max(30).default(25),
   ACCEPT_ALL_TOKENS: Joi.boolean().default(true),
 
+  // Direct Blockchain Mode (eliminates API dependencies)
+  USE_DIRECT_BLOCKCHAIN: Joi.boolean().default(true),
+  FACTORY_SCAN_ON_STARTUP: Joi.boolean().default(false),
+  POOL_CACHE_MAX_AGE_HOURS: Joi.number().min(1).default(24),
+
   // Token Filtering
   MIN_TOKEN_POOL_COUNT: Joi.number().min(1).default(2),
   PRIORITIZE_BASE_TOKENS: Joi.boolean().default(true),
@@ -136,6 +141,11 @@ export interface EnvironmentConfig {
   POOL_UPDATE_INTERVAL_SECONDS: number;
   GECKO_PAGES_TO_FETCH: number;
   ACCEPT_ALL_TOKENS: boolean;
+
+  // Direct Blockchain Mode
+  USE_DIRECT_BLOCKCHAIN: boolean;
+  FACTORY_SCAN_ON_STARTUP: boolean;
+  POOL_CACHE_MAX_AGE_HOURS: number;
 
   // Token Filtering
   MIN_TOKEN_POOL_COUNT: number;
