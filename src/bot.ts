@@ -15,6 +15,9 @@ import { Opportunity } from './database/models/Opportunity';
 import { getConfig } from './config/environment';
 import { getCurrentChain } from './config/chains';
 import { CurlRpcProvider } from './services/blockchain/CurlRpcProvider';
+import { MultiProviderManager, DEFAULT_BASE_RPCS } from './services/rpc/MultiProviderManager';
+import { FactoryScanner, CachedPool } from './services/discovery/FactoryScanner';
+import { PoolCache } from './services/discovery/PoolCache';
 
 export interface BotOptions {
   rpcUrl: string;
@@ -47,6 +50,8 @@ export class ArbitrageBot {
   private poolDiscoveryIntervalMs: number = 3600000; // 1 hour
   private config = getConfig();
   private chain = getCurrentChain();
+  private multiProviderManager: MultiProviderManager | null = null;
+  private factoryScanner: FactoryScanner | null = null;
 
   constructor(options: BotOptions) {
     this.options = options;
@@ -99,6 +104,13 @@ export class ArbitrageBot {
       this.config.MIN_PROFIT_USD || 1.0,
       0.1 // Min profit percentage
     );
+
+    // Initialize direct blockchain scanning if enabled
+    if (this.config.USE_DIRECT_BLOCKCHAIN) {
+      logger.info('Direct blockchain mode enabled - initializing factory scanner');
+      this.multiProviderManager = new MultiProviderManager(DEFAULT_BASE_RPCS);
+      this.factoryScanner = new FactoryScanner(this.multiProviderManager);
+    }
 
     logger.info('ArbitrageBot initialized');
   }
@@ -216,6 +228,118 @@ export class ArbitrageBot {
    */
   private async discoverAndSavePools(): Promise<void> {
     try {
+      // Use direct blockchain scanning if enabled
+      if (this.config.USE_DIRECT_BLOCKCHAIN && this.factoryScanner) {
+        await this.discoverPoolsFromBlockchain();
+        return;
+      }
+
+      // Fallback to GeckoTerminal
+      await this.discoverPoolsFromGecko();
+    } catch (error) {
+      logger.error(`Failed to discover and save pools: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Discover pools directly from blockchain using factory scanner
+   */
+  private async discoverPoolsFromBlockchain(): Promise<void> {
+    try {
+      // Check if pool cache is valid
+      const cacheValid = !PoolCache.needsRefresh(this.config.POOL_CACHE_MAX_AGE_HOURS);
+
+      if (cacheValid && !this.config.FACTORY_SCAN_ON_STARTUP) {
+        // Load from cache
+        logger.info('Loading pools from cache...');
+        const cachedPools = PoolCache.getAllCachedPools();
+        logger.info(`Loaded ${cachedPools.length} pools from cache`);
+
+        // Convert cached pools to database format and save
+        let savedCount = 0;
+        for (const cachedPool of cachedPools) {
+          // Fetch reserves for each pool
+          const reserves = await this.reserveFetcher.fetchReserves(cachedPool.address);
+          if (reserves && reserves.reserve0 !== '0' && reserves.reserve1 !== '0') {
+            const price = parseFloat(reserves.reserve1) / parseFloat(reserves.reserve0);
+
+            await Pool.upsert({
+              chain_id: this.chain.chainId,
+              token0: reserves.token0,
+              token1: reserves.token1,
+              reserve0: reserves.reserve0,
+              reserve1: reserves.reserve1,
+              fee: cachedPool.fee,
+              liquidity: '0', // Will be calculated later
+              price: price,
+            });
+            savedCount++;
+          }
+        }
+
+        logger.info(`Saved ${savedCount} pools with valid reserves from cache to database`);
+        return;
+      }
+
+      // Perform full factory scan
+      if (!this.factoryScanner) {
+        throw new Error('Factory scanner not initialized');
+      }
+
+      logger.info('🔍 Starting full factory scan (this may take 10-30 minutes)...');
+      const pools = await this.factoryScanner.scanAllFactories();
+      logger.info(`✅ Factory scan complete! Discovered ${pools.length} total pools`);
+
+      // Save to pool cache
+      const cachedPools: CachedPool[] = pools.map(pool => ({
+        address: pool.address,
+        dex: pool.dex,
+        dexType: pool.dexType,
+        token0: pool.token0.address,
+        token1: pool.token1.address,
+        fee: pool.fee,
+        discoveredAt: Date.now(),
+      }));
+
+      const cacheCount = PoolCache.savePoolsToCache(cachedPools);
+      logger.info(`💾 Saved ${cacheCount} pools to cache`);
+
+      // Save to database with reserves
+      let savedCount = 0;
+      logger.info('Fetching reserves for discovered pools...');
+      for (const pool of pools) {
+        // Fetch reserves for each pool
+        const reserves = await this.reserveFetcher.fetchReserves(pool.address);
+        if (reserves && reserves.reserve0 !== '0' && reserves.reserve1 !== '0') {
+          const price = parseFloat(reserves.reserve1) / parseFloat(reserves.reserve0);
+
+          await Pool.upsert({
+            chain_id: this.chain.chainId,
+            token0: pool.token0.address,
+            token1: pool.token1.address,
+            reserve0: reserves.reserve0,
+            reserve1: reserves.reserve1,
+            fee: pool.fee,
+            liquidity: '0', // Will be calculated later
+            price: price,
+          });
+          savedCount++;
+        }
+      }
+
+      logger.info(`✅ Saved ${savedCount} pools with valid reserves to database`);
+    } catch (error) {
+      logger.error(`Failed to discover pools from blockchain: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Discover pools from GeckoTerminal (legacy method)
+   */
+  private async discoverPoolsFromGecko(): Promise<void> {
+    try {
       // Discover pools (GeckoTerminal.discoverPools uses config.GECKO_PAGES_TO_FETCH internally)
       const pools = await this.geckoTerminal.discoverPools();
 
@@ -264,7 +388,7 @@ export class ArbitrageBot {
 
       logger.info(`Saved ${savedCount} pools with valid reserves to database`);
     } catch (error) {
-      logger.error(`Failed to discover and save pools: ${error}`);
+      logger.error(`Failed to discover pools from GeckoTerminal: ${error}`);
       throw error;
     }
   }

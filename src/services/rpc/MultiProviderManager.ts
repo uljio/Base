@@ -204,24 +204,24 @@ export class MultiProviderManager {
  * Default public Base RPC endpoints
  */
 export const DEFAULT_BASE_RPCS: ProviderConfig[] = [
-  // Tier 1: Most reliable (use curl for better performance)
+  // Tier 1: Most reliable (use ethers for full contract support)
   {
     url: 'https://mainnet.base.org',
     name: 'Base Official',
     priority: 1,
-    useCurl: true,
+    useCurl: false, // Changed to false for contract support
   },
   {
     url: 'https://base.publicnode.com',
     name: 'PublicNode Primary',
     priority: 1,
-    useCurl: true,
+    useCurl: false,
   },
   {
     url: 'https://base-rpc.publicnode.com',
     name: 'PublicNode Secondary',
     priority: 1,
-    useCurl: true,
+    useCurl: false,
   },
 
   // Tier 2: Good alternatives
@@ -229,25 +229,25 @@ export const DEFAULT_BASE_RPCS: ProviderConfig[] = [
     url: 'https://base.meowrpc.com',
     name: 'MeowRPC',
     priority: 2,
-    useCurl: true,
+    useCurl: false,
   },
   {
     url: 'https://base.drpc.org',
     name: 'dRPC',
     priority: 2,
-    useCurl: true,
+    useCurl: false,
   },
   {
     url: 'https://rpc.ankr.com/base',
     name: 'Ankr',
     priority: 2,
-    useCurl: true,
+    useCurl: false,
   },
   {
     url: 'https://base.gateway.tenderly.co',
     name: 'Tenderly',
     priority: 2,
-    useCurl: true,
+    useCurl: false,
   },
 
   // Tier 3: Backup options
@@ -255,19 +255,19 @@ export const DEFAULT_BASE_RPCS: ProviderConfig[] = [
     url: 'https://1rpc.io/base',
     name: '1RPC',
     priority: 3,
-    useCurl: true,
+    useCurl: false,
   },
   {
     url: 'https://base.llamarpc.com',
     name: 'LlamaRPC',
     priority: 3,
-    useCurl: true,
+    useCurl: false,
   },
   {
     url: 'https://base-pokt.nodies.app',
     name: 'Nodies POKT',
     priority: 3,
-    useCurl: true,
+    useCurl: false,
   },
 ];
 
