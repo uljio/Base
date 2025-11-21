@@ -29,9 +29,10 @@ async function main() {
     sqlite.prepare('DELETE FROM opportunities').run();
 
     // Create test pools with intentional price discrepancies for arbitrage
-    logger.info('Inserting test pools with price discrepancies...');
+    logger.info('Inserting enhanced test pools with multiple arbitrage scenarios...');
 
-    // Pool 1: WETH/USDC on DEX A - ETH = $3000 (0.3% fee)
+    // ===== SCENARIO 1: Direct WETH/USDC Arbitrage (LARGE SPREAD) =====
+    // Pool 1A: WETH/USDC on Uniswap - ETH = $3000 (0.3% fee)
     await Pool.upsert({
       chain_id: chain.chainId,
       token0: WETH,
@@ -40,22 +41,23 @@ async function main() {
       reserve1: '300000000000', // 300,000 USDC (6 decimals)
       fee: 0.003, // 0.3%
       liquidity: '300000',
-      price: 3000, // 300000 USDC / 100 WETH = 3000
+      price: 3000,
     });
 
-    // Pool 2: WETH/USDC on DEX B - ETH = $3200 (0.1% fee - HUGE arbitrage opportunity!)
+    // Pool 1B: WETH/USDC on Aerodrome - ETH = $3200 (0.1% fee - 6.7% price difference!)
     await Pool.upsert({
       chain_id: chain.chainId,
       token0: WETH,
       token1: USDC,
       reserve0: '50000000000000000000', // 50 WETH
       reserve1: '160000000000', // 160,000 USDC
-      fee: 0.001, // 0.1% - Different fee makes this a separate pool
+      fee: 0.001, // 0.1%
       liquidity: '160000',
-      price: 3200, // 160000 USDC / 50 WETH = 3200 (buy low at $3000, sell high at $3200!)
+      price: 3200, // Buy low at $3000, sell high at $3200!
     });
 
-    // Pool 3: WETH/DAI - ETH = $3050
+    // ===== SCENARIO 2: WETH/DAI Arbitrage (MEDIUM SPREAD) =====
+    // Pool 2A: WETH/DAI on BaseSwap - ETH = $3050
     await Pool.upsert({
       chain_id: chain.chainId,
       token0: WETH,
@@ -67,7 +69,20 @@ async function main() {
       price: 3050,
     });
 
-    // Pool 4: USDC/DAI - slight price difference for triangular arb
+    // Pool 2B: WETH/DAI on Velodrome - ETH = $3100 (1.6% price difference)
+    await Pool.upsert({
+      chain_id: chain.chainId,
+      token0: WETH,
+      token1: DAI,
+      reserve0: '60000000000000000000', // 60 WETH
+      reserve1: '186000000000000000000000', // 186,000 DAI
+      fee: 0.002, // 0.2%
+      liquidity: '186000',
+      price: 3100,
+    });
+
+    // ===== SCENARIO 3: Stablecoin Arbitrage (SMALL SPREAD) =====
+    // Pool 3A: USDC/DAI on SushiSwap - 1:1 ratio
     await Pool.upsert({
       chain_id: chain.chainId,
       token0: USDC,
@@ -76,10 +91,49 @@ async function main() {
       reserve1: '500000000000000000000000', // 500,000 DAI
       fee: 0.001,
       liquidity: '500000',
-      price: 1.0, // 1:1 ratio
+      price: 1.0,
     });
 
-    logger.info('✅ Inserted 4 test pools with price discrepancies');
+    // Pool 3B: USDC/DAI on Uniswap - 1:1.003 ratio (0.3% depeg)
+    await Pool.upsert({
+      chain_id: chain.chainId,
+      token0: USDC,
+      token1: DAI,
+      reserve0: '300000000000', // 300,000 USDC
+      reserve1: '300900000000000000000000', // 300,900 DAI
+      fee: 0.0005, // 0.05% (lower fee for stablecoins)
+      liquidity: '300000',
+      price: 1.003, // Slight DAI premium
+    });
+
+    // ===== SCENARIO 4: Triangular Arbitrage Path =====
+    // Additional pool to enable: USDC → WETH → DAI → USDC cycle
+    // Pool 4: DAI/WETH on Aerodrome - different from Pool 2
+    await Pool.upsert({
+      chain_id: chain.chainId,
+      token0: DAI,
+      token1: WETH,
+      reserve0: '310000000000000000000000', // 310,000 DAI
+      reserve1: '99000000000000000000', // 99 WETH (1 WETH = 3131 DAI - higher than others)
+      fee: 0.003,
+      liquidity: '310000',
+      price: 3131, // Intentionally higher to create triangular opportunity
+    });
+
+    // ===== Additional liquidity pools for better routing =====
+    // Pool 5: WETH/USDC on BaseSwap - middle ground price
+    await Pool.upsert({
+      chain_id: chain.chainId,
+      token0: WETH,
+      token1: USDC,
+      reserve0: '40000000000000000000', // 40 WETH
+      reserve1: '124000000000', // 124,000 USDC (1 WETH = 3100 USDC)
+      fee: 0.0025, // 0.25%
+      liquidity: '124000',
+      price: 3100,
+    });
+
+    logger.info('✅ Inserted 8 test pools with multiple arbitrage scenarios');
 
     // Verify pools were inserted
     const pools = await Pool.findByChain(chain.chainId, 100);
